@@ -5,12 +5,17 @@
 #define PAM_SM_SESSION
 
 #include <security/pam_modules.h>
+#include <syslog.h>
+#include <stdarg.h>
 
+#define NAME	"pam_shamir.so"
+
+void log_message(int level, char *msg, ...);
 
 /* authentication management  */
 PAM_EXTERN
 int pam_sm_authenticate(pam_handle_t *pamh, int flags, int argc, const char **argv){
-        pam_display_message("Test message from pam_shamir");
+        log_message(LOG_NOTICE, "Test message from pam_shamir");
 	return PAM_IGNORE;
 }
 
@@ -37,3 +42,13 @@ int pam_sm_close_session(pam_handle_t *pamh, int flags, int argc, const char **a
 }
 
 
+
+void log_message(int level, char *msg, ...){
+	va_list args;
+	
+	va_start(args, msg);
+	openlog(NAME, LOG_PID, LOG_AUTHPRIV);
+	vsyslog(level, msg, args);
+	closelog();
+	va_end(args);
+}
