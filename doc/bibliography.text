@@ -9,3 +9,4 @@ An introduction to write a Linux PAM module (in three part.) :
 	- Part2. http://www.linuxdevcenter.com/pub/a/linux/2002/05/23/pam_modules.html (3 pages)
 	- Part3. http://www.linuxdevcenter.com/pub/a/linux/2002/05/30/pam_modules.html (2 pages)
 
+Good documentation with many source code of pam : https://fossies.org/dox/Linux-PAM-1.1.8/index.html
