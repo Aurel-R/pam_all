@@ -5,13 +5,24 @@
 	4. chmod 644 pam_shamir.so
 
 --- configure pam ---
-	1. edit /etc/pam.d/login and add this line to the top of the file (adapt the module path):
-		auth	optional	/lib/security/pam_shamir.so
-	
+	1. edit /etc/pam.d/sudo  (adapt the module path):
+  
+	> +	auth       optional   /lib/x86_64-linux-gnu/security/pam_shamir.so debug
+	>	auth       required   pam_env.so readenv=1 user_readenv=0
+	>	auth       required   pam_env.so readenv=1 envfile=/etc/default/locale user_readenv=0
+	> -	@include common-auth
+	> +	auth    [success=1 default=ignore]      pam_unix.so nullok_secure 
+	> +	auth    requisite                       pam_deny.so
+	> +	auth    required                        pam_permit.so
+	> +	auth    optional                        pam_cap.so
+	>	@include common-account
+	>	@include common-session-noninteractive 
+
+
 --- testing module ---
-	1. open a tty and try to connect
+	1. try a command with sudo
 	2. get the last lines in your /var/auth.log
 	3. If you see a line like that, you win ! 
-		pam_shamir.so[1065]: Test message from pam_shamir
+		pam_shamir.so[9482]: the module was started
 	4. else, contact the developper
 
