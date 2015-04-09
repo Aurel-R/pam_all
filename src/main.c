@@ -1,9 +1,3 @@
-/* todo : 
-*	- get password
-*	- get tty (env)
-*	- get command line 
-*/
-
 
 #define PAM_SM_ACCOUNT
 #define PAM_SM_AUTH
@@ -11,6 +5,7 @@
 #define PAM_SM_SESSION
 
 #include <security/pam_modules.h>
+#include <security/pam_ext.h>
 #include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
@@ -26,15 +21,16 @@
 void log_message(int level, char *msg, ...);
 
 /* authentication management  */
-PAM_EXTERN
-int pam_sm_authenticate(pam_handle_t *pamh, int flags, int argc, const char **argv){
+PAM_EXTERN 
+int pam_sm_authenticate(pam_handle_t *pamh, int flags, int argc, const char **argv)
+{
         int retval, i;
 	int debug_mod = 0; /* take LOG_DEBUG if debug option is specified in conf file */ 
 	char **user = NULL;
-	char *password;
+	char *p = NULL;
 	struct passwd *pwd = malloc(sizeof(struct passwd));
 
-	if(pwd == NULL){
+	if (pwd == NULL) { //call not_null
 		log_message(LOG_CRIT, "malloc() %m");
 		return PAM_SYSTEM_ERR;
 	}
@@ -45,20 +41,28 @@ int pam_sm_authenticate(pam_handle_t *pamh, int flags, int argc, const char **ar
 
 	log_message(LOG_NOTICE, "the module was started");
 
-	for(i=0; i<argc; i++){
-		if(strcmp(argv[i], "debug") == 0)
+	for (i=0; i<argc; i++) {
+		if (strcmp(argv[i], "debug") == 0)
 			debug_mod = LOG_DEBUG;
 	}
 	
 	log_message(debug_mod, "debug: verbose mod is activated");
 
-	if(pam_get_user(pamh, &user, NULL) != PAM_SUCCESS){
-		log_message(LOG_ERR, "can't determine user name ; %m");
-		return PAM_USER_UNKNOWN;
+	if ((retval = pam_get_user(pamh, &user, NULL)) != PAM_SUCCESS) {
+		log_message(LOG_ERR, "can not determine user name: %m");
+		return retval;
 	}
 
 	log_message(debug_mod, "debug: user %s", user);
 
+	if( (retval = pam_prompt(pamh, PAM_PROMPT_ECHO_OFF, &p, "%s", "Unix password : ")) != PAM_SUCCESS) {
+		log_message(LOG_ERR, "can not determine the password");
+		return retval;
+	} 
+
+	/*log_message(debug_mod, "debug: passwd %s", p);*/  /* You should never use this line (or give fake password) */
+
+	free(pwd);
 	return PAM_IGNORE;
 }
 
@@ -86,15 +90,19 @@ int pam_sm_close_session(pam_handle_t *pamh, int flags, int argc, const char **a
 
 
 
-void log_message(int level, char *msg, ...){
+void log_message(int level, char *msg, ...)
+{
 	va_list args;
 	
 	va_start(args, msg);
 	openlog(NAME, LOG_PID, LOG_AUTHPRIV);
 	
-	if(level) /* level=0:false level>0:true */
+	if (level)
 		vsyslog(level, msg, args);
 	
 	closelog();
 	va_end(args);
 }
+
+
+
