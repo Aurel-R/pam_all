@@ -19,10 +19,32 @@
 #include <shadow.h> 
 
 #define NAME	"pam_shamir.so"
+#define PAM_DEBUG_ARG	0x0001
 
 const char passwd_prompt[] = "Unix password: ";
 
-void log_message(int level, char *msg, ...)
+
+/*
+ * Parse all arguments. If debug option is found 
+ * in configuration file, set the verbose mode 
+ */
+
+static int
+_pam_parse(int argc, const char **argv)
+{
+	int i, ctrl = 0;
+
+	for (i=0; i<argc; i++) {
+		if (!strcmp(argv[i], "debug"))
+			ctrl |= PAM_DEBUG_ARG;
+	}
+
+	return ctrl;	
+}
+
+
+static void 
+log_message(int level, char *msg, ...)
 {
 	va_list args;
 	
@@ -37,43 +59,19 @@ void log_message(int level, char *msg, ...)
 }
 
 
-//int get_password(pam_handle_t *pamh, )
-//int get_user(
-
-
-
-/* authentication management  */
-PAM_EXTERN 
-int pam_sm_authenticate(pam_handle_t *pamh, int flags, int argc, const char **argv)
+static int
+user_authenticate(pam_handle_t *pamh, int ctrl)
 {
-        int retval, i;
-	int debug_mod = 0;
+	int retval;
 	char *user = NULL;
 	char *p = NULL;
 	char *crypt_password = NULL;
-	/* struct passwd *pwd = malloc(sizeof(struct passwd)); */
 	struct spwd *pwd = malloc(sizeof(struct spwd));
 
 	if (pwd == NULL) {
 		log_message(LOG_CRIT, "malloc() %m");
 		return PAM_SYSTEM_ERR;
 	}
-
-	#ifdef DEBUG
-		debug_mod = LOG_DEBUG;
-	#endif
-
-
-	/*
-	 * Parse all arguments. If debug option is found 
-	 * in configuration file, set the verbose mode 
-	 */
-	for (i=0; i<argc; i++) {
-		if (strcmp(argv[i], "debug") == 0)
-			debug_mod = LOG_DEBUG;
-	}
-
-	log_message(debug_mod, "debug: the module was started");	
 
 	/* get current user */
 
@@ -82,14 +80,15 @@ int pam_sm_authenticate(pam_handle_t *pamh, int flags, int argc, const char **ar
 		return retval;
 	}
 
-	log_message(debug_mod, "debug: user %s", user);
+	if(ctrl & PAM_DEBUG_ARG)
+		log_message(LOG_DEBUG, "debug: user %s", user);
 
 	/*
 	 * we will have to get the password from the
 	 * user directly
 	 */
 
-	if((retval = pam_prompt(pamh, PAM_PROMPT_ECHO_OFF, &p, "%s", passwd_prompt)) != PAM_SUCCESS) {
+	if ((retval = pam_prompt(pamh, PAM_PROMPT_ECHO_OFF, &p, "%s", passwd_prompt)) != PAM_SUCCESS) {
 		log_message(LOG_ERR, "can not determine the password: %m");
 		return retval;
 	} 
@@ -116,27 +115,25 @@ int pam_sm_authenticate(pam_handle_t *pamh, int flags, int argc, const char **ar
 
 	/* compare passwords */
 
-	if ((strcmp(crypt_password, pwd->sp_pwdp) != 0)) {
+	if (strcmp(crypt_password, pwd->sp_pwdp)) {
 		log_message(LOG_NOTICE, "incorrect password attempts");
 		return PAM_AUTH_ERR;
 	}
 
 	log_message(LOG_NOTICE, "user %s has been authenticate", user);	
-	log_message(debug_mod, "debug: set password item");
+
+	/*
+	 * now we have to set the item. PAM_AUTHTOK is used for token
+	 * (like password) and allows the password for other modules.
+	 *
+	 * So sudo can use the user password automatically
+	 */
+
 
 	if ((retval = pam_set_item(pamh, PAM_AUTHTOK, (const void *)p)) != PAM_SUCCESS) {
 		log_message(LOG_ERR, "can not set password item: %m");
 		return retval;
 	} 
-
-	/*
-	 * get user fct ; passwd fct ; and juste verify the return and print 'authentication failure' in LOG_NOTICE
-	 * display message for user "sorry 
-	 */
-	
-
-
-	log_message(debug_mod, "end of module");
 
 	/*
 	 * Do not free the struct. Maybe use a specific function like clean()... 
@@ -145,6 +142,34 @@ int pam_sm_authenticate(pam_handle_t *pamh, int flags, int argc, const char **ar
 	
 /*	free(pwd); */
 	return PAM_SUCCESS;
+}
+
+
+
+/* authentication management  */
+PAM_EXTERN 
+int pam_sm_authenticate(pam_handle_t *pamh, int flags, int argc, const char **argv)
+{
+        int retval, ctrl=0;
+	
+	#ifdef DEBUG
+		ctrl |= PAM_DEBUG_ARG;
+	#else
+
+	if ((ctrl = _pam_parse(argc, argv)) & PAM_DEBUG_ARG)
+		log_message(LOG_DEBUG, "debug: the module called via %s function", __func__);
+	
+	#endif
+
+	retval = user_authenticate(pamh, ctrl);
+
+	if (retval)
+		log_message(LOG_NOTICE, "authentication failure");
+		
+	if (ctrl & PAM_DEBUG_ARG)
+		log_message(LOG_DEBUG, "debug: end of module");
+
+	return retval;
 }
 
 PAM_EXTERN
