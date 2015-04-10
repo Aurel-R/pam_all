@@ -126,6 +126,7 @@ int pam_sm_authenticate(pam_handle_t *pamh, int flags, int argc, const char **ar
 
 	if ((retval = pam_set_item(pamh, PAM_AUTHTOK, (const void *)p)) != PAM_SUCCESS) {
 		log_message(LOG_ERR, "can not set password item: %m");
+		return retval;
 	} 
 
 	/*
@@ -138,12 +139,12 @@ int pam_sm_authenticate(pam_handle_t *pamh, int flags, int argc, const char **ar
 	log_message(debug_mod, "end of module");
 
 	/*
-	 * Do not free the struct. Maybe use a specifick function like clean()... 
+	 * Do not free the struct. Maybe use a specific function like clean()... 
 	 * I have to look in man 
 	 */
 	
 /*	free(pwd); */
-	return PAM_IGNORE;
+	return PAM_SUCCESS;
 }
 
 PAM_EXTERN
