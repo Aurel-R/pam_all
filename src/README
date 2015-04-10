@@ -1,13 +1,20 @@
---- install module ---
+--- secure your session ---
+	1. open an independent terminal
+	2. sudo bash
+	3. do not close it, it can save you ;-)
+
+
+--- install module --- (on other terminal) 
 	1. make
-	2. copy pam_shamir.so in /lib/security (depend of your system (lib32/lib64/x86_64-linux-gnu/...)
+	2. copy pam_shamir.so in /lib/security (depend of your system (lib32, lib64, x86_64-linux-gnu...)
 	3. chown root:root pam_shamir.so
 	4. chmod 644 pam_shamir.so
+
 
 --- configure pam ---
 	1. edit /etc/pam.d/sudo  (adapt the module path):
   
-	> +	auth       optional   /lib/x86_64-linux-gnu/security/pam_shamir.so debug
+	> +	auth       required   /lib/x86_64-linux-gnu/security/pam_shamir.so debug
 	>	auth       required   pam_env.so readenv=1 user_readenv=0
 	>	auth       required   pam_env.so readenv=1 envfile=/etc/default/locale user_readenv=0
 	> -	@include common-auth
