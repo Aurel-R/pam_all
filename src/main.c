@@ -76,9 +76,6 @@ user_authenticate(pam_handle_t *pamh, int ctrl, struct pam_user *user)
 	user->pass = NULL;
 	char *crypt_password = NULL;
 	struct spwd *pwd = malloc(sizeof(struct spwd));
-	char err_message[50];
-
-	memset(err_message, '\0', sizeof(err_message));
 
 	if (pwd == NULL) {
 		log_message(LOG_CRIT, "malloc() %m");
@@ -185,6 +182,7 @@ int pam_sm_authenticate(pam_handle_t *pamh, int flags, int argc, const char **ar
 	
 	#ifdef DEBUG
 		ctrl |= PAM_DEBUG_ARG;
+		log_message(LOG_DEBUG, "debug: the module called via %s fuction", __func__);
 	#else
 
 	if ((ctrl = _pam_parse(argc, argv)) & PAM_DEBUG_ARG)
