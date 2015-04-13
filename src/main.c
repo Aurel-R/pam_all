@@ -19,9 +19,19 @@
 #include <shadow.h> 
 
 #define NAME	"pam_shamir.so"
-#define PAM_DEBUG_ARG	0x0001
+
+#define PAM_DEBUG_ARG	    0x0001
+#define PAM_USE_FPASS_ARG   0x0040  /* for later */
 
 const char passwd_prompt[] = "Unix password: ";
+
+
+struct pam_user {
+	char *name;
+	char *pass;
+	char *tty;
+	/* cmd */
+};
 
 
 /*
@@ -60,13 +70,15 @@ log_message(int level, char *msg, ...)
 
 
 static int
-user_authenticate(pam_handle_t *pamh, int ctrl)
+user_authenticate(pam_handle_t *pamh, int ctrl, struct pam_user *user)
 {
 	int retval;
-	char *user = NULL;
-	char *p = NULL;
+	user->pass = NULL;
 	char *crypt_password = NULL;
 	struct spwd *pwd = malloc(sizeof(struct spwd));
+	char err_message[50];
+
+	memset(err_message, '\0', sizeof(err_message));
 
 	if (pwd == NULL) {
 		log_message(LOG_CRIT, "malloc() %m");
@@ -75,26 +87,26 @@ user_authenticate(pam_handle_t *pamh, int ctrl)
 
 	/* get current user */
 
-	if ((retval = pam_get_user(pamh, (const char **)&user, NULL)) != PAM_SUCCESS) {
+	if ((retval = pam_get_user(pamh, (const char **)&user->name, NULL)) != PAM_SUCCESS) {
 		log_message(LOG_ERR, "can not determine user name: %m");
 		return retval;
 	}
 
-	if(ctrl & PAM_DEBUG_ARG)
-		log_message(LOG_DEBUG, "debug: user %s", user);
+	if (ctrl & PAM_DEBUG_ARG)
+		log_message(LOG_DEBUG, "debug: user %s", user->name);
 
 	/*
 	 * we will have to get the password from the
 	 * user directly
 	 */
 
-	if ((retval = pam_prompt(pamh, PAM_PROMPT_ECHO_OFF, &p, "%s", passwd_prompt)) != PAM_SUCCESS) {
+	if ((retval = pam_prompt(pamh, PAM_PROMPT_ECHO_OFF, &user->pass, "%s", passwd_prompt)) != PAM_SUCCESS) {
 		log_message(LOG_ERR, "can not determine the password: %m");
 		return retval;
 	} 
 
 
-	if (p == NULL) {
+	if (user->pass == NULL) {
 		log_message(LOG_NOTICE, "the password is empty");
 		return PAM_AUTH_ERR;
 	}
@@ -102,14 +114,14 @@ user_authenticate(pam_handle_t *pamh, int ctrl)
 	
 	/* get user password save in /etc/shadow */
 
-	if ((pwd = getspnam(user)) == NULL) {
-		log_message(LOG_ERR, "can not verify the password for user %s: %m", user);
+	if ((pwd = getspnam(user->name)) == NULL) {
+		log_message(LOG_ERR, "can not verify the password for user %s: %m", user->name);
 		return PAM_USER_UNKNOWN;
 	} 
 
 
-	if ((crypt_password = crypt(p, pwd->sp_pwdp)) == NULL) {
-		log_message(LOG_ERR, "can not crypt password for user %s: %m", user);
+	if ((crypt_password = crypt(user->pass, pwd->sp_pwdp)) == NULL) {
+		log_message(LOG_ERR, "can not crypt password for user %s: %m", user->name);
 		return PAM_AUTH_ERR;
 	}
 
@@ -120,7 +132,7 @@ user_authenticate(pam_handle_t *pamh, int ctrl)
 		return PAM_AUTH_ERR;
 	}
 
-	log_message(LOG_NOTICE, "user %s has been authenticate", user);	
+	log_message(LOG_NOTICE, "user %s has been authenticate", user->name);	
 
 	/*
 	 * now we have to set the item. PAM_AUTHTOK is used for token
@@ -130,10 +142,26 @@ user_authenticate(pam_handle_t *pamh, int ctrl)
 	 */
 
 
-	if ((retval = pam_set_item(pamh, PAM_AUTHTOK, (const void *)p)) != PAM_SUCCESS) {
+	if ((retval = pam_set_item(pamh, PAM_AUTHTOK, (const void *)user->pass)) != PAM_SUCCESS) {
 		log_message(LOG_ERR, "can not set password item: %m");
 		return retval;
 	} 
+
+
+	/* associate a tty */
+	
+	if ((retval = pam_get_item(pamh, PAM_TTY, (const void **)&(user->tty))) != PAM_SUCCESS) {
+		log_message(LOG_ERR, "can not determine the tty for %s: %m", user->name);
+		return retval;
+	}
+	
+	if (user->tty == NULL) {
+		log_message(LOG_ERR, "tty was not found for user %s", user->name);
+		return PAM_AUTH_ERR;
+	}
+	
+	if (ctrl & PAM_DEBUG_ARG)
+		log_message(LOG_DEBUG, "debug: tty %s", user->tty);
 
 	/*
 	 * Do not free the struct. Maybe use a specific function like clean()... 
@@ -151,6 +179,9 @@ PAM_EXTERN
 int pam_sm_authenticate(pam_handle_t *pamh, int flags, int argc, const char **argv)
 {
         int retval, ctrl=0;
+	struct pam_user user;
+
+	memset(&user, '\0', sizeof(user));
 	
 	#ifdef DEBUG
 		ctrl |= PAM_DEBUG_ARG;
@@ -161,7 +192,7 @@ int pam_sm_authenticate(pam_handle_t *pamh, int flags, int argc, const char **ar
 	
 	#endif
 
-	retval = user_authenticate(pamh, ctrl);
+	retval = user_authenticate(pamh, ctrl, &user);
 
 	if (retval)
 		log_message(LOG_NOTICE, "authentication failure");
