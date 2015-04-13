@@ -30,6 +30,7 @@ struct pam_user {
 	char *name;
 	char *pass;
 	char *tty;
+	char *service;
 	/* cmd */
 };
 
@@ -68,6 +69,17 @@ log_message(int level, char *msg, ...)
 	va_end(args);
 }
 
+static void
+cleanup(void **data)
+{
+	char *xx;
+	
+	if ((xx = (char *)data)) {
+		while(*xx)	
+			*xx++ = '\0';
+		free(*data);
+	}
+}
 
 static int
 user_authenticate(pam_handle_t *pamh, int ctrl, struct pam_user *user)
@@ -93,7 +105,7 @@ user_authenticate(pam_handle_t *pamh, int ctrl, struct pam_user *user)
 		log_message(LOG_DEBUG, "debug: user %s", user->name);
 
 	/*
-	 * we will have to get the password from the
+	 * we have to get the password from the
 	 * user directly
 	 */
 
@@ -160,12 +172,8 @@ user_authenticate(pam_handle_t *pamh, int ctrl, struct pam_user *user)
 	if (ctrl & PAM_DEBUG_ARG)
 		log_message(LOG_DEBUG, "debug: tty %s", user->tty);
 
-	/*
-	 * Do not free the struct. Maybe use a specific function like clean()... 
-	 * I have to look in man 
-	 */
-	
-/*	free(pwd); */
+
+	cleanup((void *)&pwd);
 	return PAM_SUCCESS;
 }
 
