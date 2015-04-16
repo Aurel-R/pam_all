@@ -24,14 +24,12 @@
 #define PAM_USE_FPASS_ARG   0x0040  /* for later */
 
 const char passwd_prompt[] = "Unix password: ";
-
+const char mod_data_name[] = "current_user";
 
 struct pam_user {
 	char *name;
 	char *pass;
 	char *tty;
-	char *service;
-	/* cmd */
 };
 
 
@@ -39,7 +37,6 @@ struct pam_user {
  * Parse all arguments. If debug option is found 
  * in configuration file, set the verbose mode 
  */
-
 static int
 _pam_parse(int argc, const char **argv)
 {
@@ -69,6 +66,7 @@ log_message(int level, char *msg, ...)
 	va_end(args);
 }
 
+
 static void
 cleanup(void **data)
 {
@@ -80,6 +78,7 @@ cleanup(void **data)
 		free(*data);
 	}
 }
+
 
 static int
 user_authenticate(pam_handle_t *pamh, int ctrl, struct pam_user *user)
@@ -95,7 +94,6 @@ user_authenticate(pam_handle_t *pamh, int ctrl, struct pam_user *user)
 	}
 
 	/* get current user */
-
 	if ((retval = pam_get_user(pamh, (const char **)&user->name, NULL)) != PAM_SUCCESS) {
 		log_message(LOG_ERR, "can not determine user name: %m");
 		return retval;
@@ -108,7 +106,6 @@ user_authenticate(pam_handle_t *pamh, int ctrl, struct pam_user *user)
 	 * we have to get the password from the
 	 * user directly
 	 */
-
 	if ((retval = pam_prompt(pamh, PAM_PROMPT_ECHO_OFF, &user->pass, "%s", passwd_prompt)) != PAM_SUCCESS) {
 		log_message(LOG_ERR, "can not determine the password: %m");
 		return retval;
@@ -122,7 +119,6 @@ user_authenticate(pam_handle_t *pamh, int ctrl, struct pam_user *user)
 
 	
 	/* get user password save in /etc/shadow */
-
 	if ((pwd = getspnam(user->name)) == NULL) {
 		log_message(LOG_ERR, "can not verify the password for user %s: %m", user->name);
 		return PAM_USER_UNKNOWN;
@@ -135,7 +131,6 @@ user_authenticate(pam_handle_t *pamh, int ctrl, struct pam_user *user)
 	}
 
 	/* compare passwords */
-
 	if (strcmp(crypt_password, pwd->sp_pwdp)) {
 		log_message(LOG_NOTICE, "incorrect password attempts");
 		return PAM_AUTH_ERR;
@@ -149,8 +144,6 @@ user_authenticate(pam_handle_t *pamh, int ctrl, struct pam_user *user)
 	 *
 	 * So sudo can use the user password automatically
 	 */
-
-
 	if ((retval = pam_set_item(pamh, PAM_AUTHTOK, (const void *)user->pass)) != PAM_SUCCESS) {
 		log_message(LOG_ERR, "can not set password item: %m");
 		return retval;
@@ -158,7 +151,6 @@ user_authenticate(pam_handle_t *pamh, int ctrl, struct pam_user *user)
 
 
 	/* associate a tty */
-	
 	if ((retval = pam_get_item(pamh, PAM_TTY, (const void **)&(user->tty))) != PAM_SUCCESS) {
 		log_message(LOG_ERR, "can not determine the tty for %s: %m", user->name);
 		return retval;
@@ -200,13 +192,26 @@ int pam_sm_authenticate(pam_handle_t *pamh, int flags, int argc, const char **ar
 
 	retval = user_authenticate(pamh, ctrl, &user);
 
-	if (retval)
+	if (retval) {
 		log_message(LOG_NOTICE, "authentication failure");
 		
-	if (ctrl & PAM_DEBUG_ARG)
-		log_message(LOG_DEBUG, "debug: end of module");
+		if (ctrl & PAM_DEBUG_ARG)
+			log_message(LOG_DEBUG, "debug: end of module");
 
-	return retval;
+		return retval;
+	}
+	
+       /*
+	* Now we have to set current user data for the session management.
+	* pam_set_data provide data for him and other modules too, but never 
+	* for an application
+	*/
+	if ((retval = pam_set_data(pamh, mod_data_name, (void *)&user, NULL)) != PAM_SUCCESS) {
+		log_message(LOG_ALERT, "set data for user error: %m");
+		return retval;
+	}
+
+	return PAM_SUCCESS;
 }
 
 PAM_EXTERN
@@ -222,13 +227,30 @@ int pam_sm_acct_mgmt(pam_handle_t *pamh, int flags, int argc, const char **argv)
 
 /* session management */
 PAM_EXTERN
-int pam_sm_open_session(pam_handle_t *pamh, int flags, int argc, const char **argv){
-	return PAM_IGNORE;
+int pam_sm_open_session(pam_handle_t *pamh, int flags, int argc, const char **argv)
+{
+	log_message(LOG_DEBUG, "debug: opening session");
+	
+	int retval;
+	struct pam_user *user = NULL;
+
+	if ((retval = pam_get_data(pamh, mod_data_name, (const void **)&user)) != PAM_SUCCESS) {
+		log_message(LOG_ERR, "get data for user error: %m");
+		return retval;
+	}
+
+	if (user == NULL) {
+		log_message(LOG_ALERT, "data is empty");
+		return PAM_SESSION_ERR;
+	}
+	
+	return PAM_SUCCESS;
 }
 
 PAM_EXTERN
 int pam_sm_close_session(pam_handle_t *pamh, int flags, int argc, const char **argv){
-        return PAM_IGNORE;
+        log_message(LOG_DEBUG, "debug: closing session");
+	return PAM_SUCCESS;
 }
 
 
