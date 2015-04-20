@@ -18,16 +18,18 @@
 #include <crypt.h>
 #include <shadow.h> 
 
-#define NAME	"pam_shamir.so"
+#define UNUSED __attribute__((unused))
 
+#define NAME	"pam_shamir.so"
 #define PAM_DEBUG_ARG	    0x0001
-#define PAM_USE_FPASS_ARG   0x0040  /* for later */
+#define PAM_USE_FPASS_ARG   0x0040  
+
+#define DATANAME "current_user"
 
 const char passwd_prompt[] = "Unix password: ";
-const char mod_data_name[] = "current_user";
 
 struct pam_user {
-	char *name;
+	char *name; 
 	char *pass;
 	char *tty;
 };
@@ -79,6 +81,19 @@ cleanup(void **data)
 	}
 }
 
+static void 
+clean(pam_handle_t *pamh UNUSED, void *data, int error_status UNUSED)
+{
+	free(data);
+}
+
+static const 
+struct pam_user *get_data(const pam_handle_t *pamh)
+{
+	const void *data;
+
+	return (pam_get_data(pamh, DATANAME, &data) == PAM_SUCCESS) ? data : NULL;
+}
 
 static int
 user_authenticate(pam_handle_t *pamh, int ctrl, struct pam_user *user)
@@ -87,20 +102,32 @@ user_authenticate(pam_handle_t *pamh, int ctrl, struct pam_user *user)
 	user->pass = NULL;
 	char *crypt_password = NULL;
 	struct spwd *pwd = malloc(sizeof(struct spwd));
+	char *usr;
+	size_t buf_len;
 
+	/* log_message(LOG_DEBUG, "__ADDR_OF_DATA  __AUTH2  user[0x%X]", user); */
+	
 	if (pwd == NULL) {
 		log_message(LOG_CRIT, "malloc() %m");
 		return PAM_SYSTEM_ERR;
 	}
 
 	/* get current user */
-	if ((retval = pam_get_user(pamh, (const char **)&user->name, NULL)) != PAM_SUCCESS) {
+	if ((retval = pam_get_user(pamh, (const char **)&usr, NULL)) != PAM_SUCCESS) {
 		log_message(LOG_ERR, "can not determine user name: %m");
 		return retval;
 	}
 
+	buf_len = (strlen(usr)) + 1;
+	user->name = calloc(buf_len, sizeof(char)); /* not free in this fct */
+
+	if(user->name == NULL)
+		return PAM_SYSTEM_ERR;
+
+	strncpy(user->name, usr, buf_len - 1);
+
 	if (ctrl & PAM_DEBUG_ARG)
-		log_message(LOG_DEBUG, "debug: user %s", user->name);
+		log_message(LOG_DEBUG, "DEBUG: user %s", user->name);
 
 	/*
 	 * we have to get the password from the
@@ -162,8 +189,7 @@ user_authenticate(pam_handle_t *pamh, int ctrl, struct pam_user *user)
 	}
 	
 	if (ctrl & PAM_DEBUG_ARG)
-		log_message(LOG_DEBUG, "debug: tty %s", user->tty);
-
+		log_message(LOG_DEBUG, "DEBUG: tty %s", user->tty);
 
 	cleanup((void *)&pwd);
 	return PAM_SUCCESS;
@@ -176,40 +202,45 @@ PAM_EXTERN
 int pam_sm_authenticate(pam_handle_t *pamh, int flags, int argc, const char **argv)
 {
         int retval, ctrl=0;
-	struct pam_user user;
+	struct pam_user *user = NULL;
 
-	memset(&user, '\0', sizeof(user));
+	user = (struct pam_user *) malloc(sizeof(struct pam_user));
+	
+	if(user == NULL)
+		return PAM_SYSTEM_ERR;
 	
 	#ifdef DEBUG
 		ctrl |= PAM_DEBUG_ARG;
-		log_message(LOG_DEBUG, "debug: the module called via %s fuction", __func__);
+		log_message(LOG_DEBUG, "DEBUG: the module called via %s fuction", __func__);
 	#else
 
 	if ((ctrl = _pam_parse(argc, argv)) & PAM_DEBUG_ARG)
-		log_message(LOG_DEBUG, "debug: the module called via %s function", __func__);
+		log_message(LOG_DEBUG, "DEBUG: the module called via %s function", __func__);
 	
 	#endif
 
-	retval = user_authenticate(pamh, ctrl, &user);
+	retval = user_authenticate(pamh, ctrl, user);
 
 	if (retval) {
 		log_message(LOG_NOTICE, "authentication failure");
 		
 		if (ctrl & PAM_DEBUG_ARG)
-			log_message(LOG_DEBUG, "debug: end of module");
+			log_message(LOG_DEBUG, "DEBUG: end of module");
 
 		return retval;
 	}
-	
+
        /*
 	* Now we have to set current user data for the session management.
 	* pam_set_data provide data for him and other modules too, but never 
 	* for an application
 	*/
-	if ((retval = pam_set_data(pamh, mod_data_name, (void *)&user, NULL)) != PAM_SUCCESS) {
-		log_message(LOG_ALERT, "set data for user error: %m");
+	if ((retval = pam_set_data(pamh, DATANAME, user, NULL)) != PAM_SUCCESS) {
+		log_message(LOG_ALERT, "set data for user %s error: %m", user->name);
 		return retval;
 	}
+	
+	/* log_message(LOG_DEBUG, "__ADDR_OF_DATA __AUTH user[0x%X] user->name[%s][0x%X]", user, user->name, &user->name); */
 
 	return PAM_SUCCESS;
 }
@@ -229,27 +260,29 @@ int pam_sm_acct_mgmt(pam_handle_t *pamh, int flags, int argc, const char **argv)
 PAM_EXTERN
 int pam_sm_open_session(pam_handle_t *pamh, int flags, int argc, const char **argv)
 {
-	log_message(LOG_DEBUG, "debug: opening session");
-	
-	int retval;
-	struct pam_user *user = NULL;
+	const struct pam_user *user;
 
-	if ((retval = pam_get_data(pamh, mod_data_name, (const void **)&user)) != PAM_SUCCESS) {
-		log_message(LOG_ERR, "get data for user error: %m");
-		return retval;
+	if ((user = get_data(pamh)) == NULL) {
+		log_message(LOG_CRIT, "impossible to recover the data");
+		return PAM_SYSTEM_ERR;
 	}
 
-	if (user == NULL) {
-		log_message(LOG_ALERT, "data is empty");
-		return PAM_SESSION_ERR;
-	}
-	
+	/* log_message(LOG_DEBUG, "__ADDR_OF_DATA __SESS user[0x%X] user->name[%s][0x%X]", user, user->name, &user->name); */
+
+	log_message(LOG_NOTICE, "session opened by %s in %s", user->name, user->tty);
+
 	return PAM_SUCCESS;
 }
 
 PAM_EXTERN
-int pam_sm_close_session(pam_handle_t *pamh, int flags, int argc, const char **argv){
-        log_message(LOG_DEBUG, "debug: closing session");
+int pam_sm_close_session(pam_handle_t *pamh, int flags, int argc, const char **argv)
+{	
+	int retval;
+	if ((retval = pam_set_data(pamh, DATANAME, NULL, NULL)) != PAM_SUCCESS)
+		return PAM_SYSTEM_ERR;
+
+	log_message(LOG_DEBUG, "DEBUG: session closed");
+	
 	return PAM_SUCCESS;
 }
 
