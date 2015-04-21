@@ -13,7 +13,6 @@
 #include <sudo_plugin.h>
 
 #define NAME	"shared.so"
-#define FIFO_PATH	"/var/lib/shamir/"
 #define __dso_public __attribute__((__visibility__("default")))
 
 char **command;

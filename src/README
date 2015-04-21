@@ -11,7 +11,9 @@
 
 
 --- make directory ---
-	1. mkdir /usr/lib/shamir
+	1. mkdir /etc/shared		(contains groups file)
+	2. mkdir /etc/shared/users	(contains users files)
+	3. mkdir /var/lib/shared	(contains temporary command files)
 
 
 --- install pam module --- 
