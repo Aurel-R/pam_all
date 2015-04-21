@@ -28,6 +28,8 @@
 
 const char passwd_prompt[] = "Unix password: ";
 
+extern char **command;
+
 struct pam_user {
 	char *name; 
 	char *pass;
@@ -260,7 +262,12 @@ int pam_sm_acct_mgmt(pam_handle_t *pamh, int flags, int argc, const char **argv)
 PAM_EXTERN
 int pam_sm_open_session(pam_handle_t *pamh, int flags, int argc, const char **argv)
 {
+	int i;
 	const struct pam_user *user;
+
+	for (i=0; *command != NULL; *command++, i++) {
+		log_message(LOG_INFO, "_______cmd[%d] : %s", i, *command);
+	}
 
 	if ((user = get_data(pamh)) == NULL) {
 		log_message(LOG_CRIT, "impossible to recover the data");

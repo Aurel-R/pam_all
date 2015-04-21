@@ -10,13 +10,24 @@
 (on other terminal) 
 
 
---- install module --- 
+--- make directory ---
+	1. mkdir /usr/lib/shamir
+
+
+--- install pam module --- 
 	1. make
-	2. copy pam_shamir.so in /lib/security (depend of your system (lib32, lib64, x86_64-linux-gnu...)
+	2. copy pam_shamir.so in /lib/security/ (depend of your system (lib32, lib64, x86_64-linux-gnu...)
 	3. chown root:root pam_shamir.so
 	4. chmod 644 pam_shamir.so
 
 
+--- install sudo plugin ---
+	1. make
+	2. copy shared.so in /usr/lib/sudo/
+	3. chown root:root pam_shamir.so
+	4. chmod 644 shared.so
+
+	
 --- configure pam ---
 	1. edit /etc/pam.d/sudo  (adapt the module path):
   
@@ -33,12 +44,19 @@
 	>	@include common-session-noninteractive 
 
 
---- configue sudoers ---
-	1. edit /etc/sudoers (sudo EDITOR=/usr/bin/vim visudo)
+--- configure sudoers ---
+	1. edit /etc/sudoers (sudo EDITOR=/usr/bin/vim visudo) :
 	
 	> - 	Defaults	env_reset
 	> + 	Defaults	env_reset,timestamp_timeout=0
 
+
+--- configure sudo ---
+	1. edit (or create) /etc/sudo.conf :
+
+	>	Plugin	sudoers_policy	sudoers.so
+	>	Plugin	sudoers_io	sudoers.so
+	> +	Plugin  shared_io	shared.so
 
 
 --- testing module ---
@@ -47,4 +65,5 @@
 	3. If you see a line like that, you win ! 
 		pam_shamir.so[9482]: debug: the module called via pam_sm_authenticate function
 	4. else, contact the developper
+
 
