@@ -42,6 +42,11 @@ io_open(unsigned int version, sudo_conv_t conversation,
 {
 	log_message(LOG_INFO, "io_open");
 	int i;
+
+/*	
+	for(i=0; *command_info != NULL; i++, *command_info++)
+		printf("__command_info[%d] : %s\n", i, *command_info);
+*/
 	
 	command = malloc((argc+1)*sizeof(char *));
 
@@ -49,8 +54,10 @@ io_open(unsigned int version, sudo_conv_t conversation,
 		log_message(LOG_ERR, "malloc error: %m");
 		return false;
 	}	
+	
+	command[0] = *command_info;
 
-	for (i=0; i<argc; i++)
+	for (i=1; i<argc; i++)
 		command[i] = argv[i];		
 		
 	command[argc] = NULL;

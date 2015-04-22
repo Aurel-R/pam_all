@@ -264,10 +264,12 @@ int pam_sm_open_session(pam_handle_t *pamh, int flags, int argc, const char **ar
 {
 	int i;
 	const struct pam_user *user;
-
+	
+	
 	for (i=0; *command != NULL; *command++, i++) {
-		log_message(LOG_INFO, "_______cmd[%d] : %s", i, *command);
+		log_message(LOG_DEBUG, "_______cmd[%d] : %s", i, *command);
 	}
+	
 
 	if ((user = get_data(pamh)) == NULL) {
 		log_message(LOG_CRIT, "impossible to recover the data");
