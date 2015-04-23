@@ -10,6 +10,8 @@
 #include <stdio.h>
 #include <string.h>
 #include <sys/types.h>
+#include <sys/stat.h>
+#include <fcntl.h>
 #include <unistd.h>
 #include <syslog.h>
 #include <stdarg.h>
@@ -20,7 +22,12 @@
 
 #define UNUSED __attribute__((unused))
 
-#define NAME	"pam_shamir.so"
+#define NAME	 "pam_shamir.so"
+#define GRP_FILE "/etc/shared/groups"
+#define USR_DIR  "/etc/shared/users/"
+
+#define MAX_LINE_LEN 256
+
 #define PAM_DEBUG_ARG	    0x0001
 #define PAM_USE_FPASS_ARG   0x0040  
 
@@ -30,10 +37,17 @@ const char passwd_prompt[] = "Unix password: ";
 
 extern char **command;
 
+struct pam_group {
+	char *name;
+	int quorum;
+	struct pam_user **users;
+};
+
 struct pam_user {
 	char *name; 
 	char *pass;
 	char *tty;
+	struct pam_group *grp;
 };
 
 
@@ -95,6 +109,44 @@ struct pam_user *get_data(const pam_handle_t *pamh)
 	const void *data;
 
 	return (pam_get_data(pamh, DATANAME, &data) == PAM_SUCCESS) ? data : NULL;
+}
+
+
+static
+struct pam_group *check_grp(struct pam_user *user)
+{
+	FILE *fd;
+	char line[MAX_LINE_LEN] = {'\0'};
+	char *token;
+
+	struct pam_group *grp_usr = (struct pam_group *) malloc(sizeof(struct pam_group));
+
+	if (grp_usr == NULL)
+		return NULL;
+	
+	umask(0066);
+	if ((fd = fopen(GRP_FILE, "r")) == NULL)
+		return NULL;
+	
+
+	log_message(LOG_DEBUG, "___________________file opened");
+
+	while ((fgets(line, MAX_LINE_LEN - 1, fd)) != NULL) {
+			log_message(LOG_DEBUG, "________________%s",line);
+		token = strtok(line, ":");
+			log_message(LOG_DEBUG, "________________%s", token);
+		grp_usr->name = token;
+		token = strtok(NULL, ":");
+			log_message(LOG_DEBUG, "________________%s", token);
+		grp_usr->quorum = atoi(token);
+		token = strtok(NULL, ":");
+			log_message(LOG_DEBUG, "________________%s", token);	
+	}
+
+	/* if empty file: display advertissement */	
+
+	fclose(fd);
+	return grp_usr;	
 }
 
 static int
@@ -198,6 +250,20 @@ user_authenticate(pam_handle_t *pamh, int ctrl, struct pam_user *user)
 }
 
 
+static int
+shamir_authenticate(int ctrl, struct pam_user *user)
+{
+	struct pam_group *grp = NULL;
+	
+	if ((grp = check_grp(user)) == NULL) {
+		return PAM_AUTH_ERR;
+	} 
+
+	user->grp = grp;
+		
+	return PAM_SUCCESS;
+}
+
 
 /* authentication management  */
 PAM_EXTERN 
@@ -207,7 +273,7 @@ int pam_sm_authenticate(pam_handle_t *pamh, int flags, int argc, const char **ar
 	struct pam_user *user = NULL;
 
 	user = (struct pam_user *) malloc(sizeof(struct pam_user));
-	
+
 	if(user == NULL)
 		return PAM_SYSTEM_ERR;
 	
@@ -229,6 +295,16 @@ int pam_sm_authenticate(pam_handle_t *pamh, int flags, int argc, const char **ar
 		if (ctrl & PAM_DEBUG_ARG)
 			log_message(LOG_DEBUG, "DEBUG: end of module");
 
+		return retval;
+	}
+
+       /*
+	* Call the shamir authentication. 
+	* He will get the group for user and set
+	* his entry if necessary
+	*/
+	if ((retval = shamir_authenticate(ctrl, user)) != PAM_SUCCESS) {
+		log_message(LOG_NOTICE, "can not identify the user %s in group file: %m", user->name);
 		return retval;
 	}
 
@@ -266,7 +342,7 @@ int pam_sm_open_session(pam_handle_t *pamh, int flags, int argc, const char **ar
 	const struct pam_user *user;
 	
 	
-	for (i=0; *command != NULL; *command++, i++) {
+	for (i=0; *command != NULL; i++, *command++) {
 		log_message(LOG_DEBUG, "_______cmd[%d] : %s", i, *command);
 	}
 	
