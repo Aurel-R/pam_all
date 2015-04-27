@@ -23,24 +23,50 @@
 #define UNUSED __attribute__((unused))
 
 #define NAME	 "pam_shamir.so"
+
+/*
+ * Contains the groups of shamir.
+ * Many groups as possible but one
+ * user can't be in two different
+ * groups.
+ */
 #define GRP_FILE "/etc/shared/groups"
+
+/*
+ * Contains the private and public 
+ * users key. One file by user.
+ */ 
 #define USR_DIR  "/etc/shared/users/"
 
-#define MAX_LINE_LEN 256
+#define MAX_LINE_LEN 256 /* Maximum line lenght for groups file*/
+#define MAX_USR_GRP  20  /* Maximum users per group */
 
 #define PAM_DEBUG_ARG	    0x0001
 #define PAM_USE_FPASS_ARG   0x0040  
 
+/*
+ * NO_CONF and BAD_CONF return success. 
+ * it's necessary for the first configuration 
+ * and for not block the system.
+ */
+#define SUCCESS 	0 /* user have a group */
+#define NO_USR_GRP 	1 /* the user haven't group (authentication failed) */
+#define NO_CONF		2 /* the group file is not configured (authentication success) */
+#define BAD_CONF	3 /* bad configuration for group file (authentication success) */
+
+#define ENTRY		0
+#define NO_ENTRY	1
+
 #define DATANAME "current_user"
 
-const char passwd_prompt[] = "Unix password: ";
+static const char passwd_prompt[] = "Unix password: ";
 
 extern char **command;
 
 struct pam_group {
 	char *name;
 	int quorum;
-	struct pam_user **users;
+	struct pam_user *users[MAX_USR_GRP];
 };
 
 struct pam_user {
@@ -112,42 +138,148 @@ struct pam_user *get_data(const pam_handle_t *pamh)
 }
 
 
-static
-struct pam_group *check_grp(struct pam_user *user)
+static int
+get_group(struct pam_user *user)
 {
 	FILE *fd;
-	char line[MAX_LINE_LEN] = {'\0'};
+	char *line = calloc(MAX_LINE_LEN, sizeof(char));
 	char *token;
+	int i, j;
+	struct pam_group *grp = NULL;
 
-	struct pam_group *grp_usr = (struct pam_group *) malloc(sizeof(struct pam_group));
+	user->grp = NULL;	
 
-	if (grp_usr == NULL)
-		return NULL;
-	
-	umask(0066);
+	//umask(0066);
 	if ((fd = fopen(GRP_FILE, "r")) == NULL)
-		return NULL;
-	
+		return NO_CONF;
 
-	log_message(LOG_DEBUG, "___________________file opened");
+	grp = (struct pam_group *)malloc(sizeof(struct pam_group));
 
-	while ((fgets(line, MAX_LINE_LEN - 1, fd)) != NULL) {
-			log_message(LOG_DEBUG, "________________%s",line);
-		token = strtok(line, ":");
-			log_message(LOG_DEBUG, "________________%s", token);
-		grp_usr->name = token;
-		token = strtok(NULL, ":");
-			log_message(LOG_DEBUG, "________________%s", token);
-		grp_usr->quorum = atoi(token);
-		token = strtok(NULL, ":");
-			log_message(LOG_DEBUG, "________________%s", token);	
+	if (grp == NULL) {
+		fclose(fd);
+		return PAM_SYSTEM_ERR;
 	}
 
-	/* if empty file: display advertissement */	
+	while ((fgets(line, MAX_LINE_LEN - 1, fd)) != NULL) { 
+		if (strchr(line, ':') == NULL)
+			continue;
 
+		grp->name = strtok(line, ":");
+
+		if (grp->name == NULL || grp->name[0] == '#')
+			continue;
+
+		token = strtok(NULL, ":");
+		grp->quorum = atoi(token);
+
+		if (grp->quorum < 2){
+			fclose(fd);
+			free(grp);
+			return BAD_CONF;
+		}
+		
+		i=0;	
+		grp->users[i] = malloc(sizeof(struct pam_user));
+
+		if (grp->users[i] == NULL) {
+			fclose(fd);
+			free(grp);
+			return PAM_SYSTEM_ERR;	
+		}
+		
+		grp->users[i]->name = strtok(NULL, ":");
+	
+		if (grp->users[i]->name == NULL) {
+			fclose(fd);
+			free(grp->users[i]);
+			free(grp);
+			return BAD_CONF;
+		}
+
+		grp->users[i]->name = strtok(grp->users[i]->name, ",");		
+
+		if (strcmp(user->name, grp->users[i]->name) == 0)
+			user->grp = grp;
+	
+		while (grp->users[i]->name != NULL) {
+			i++;
+			grp->users[i] = malloc(sizeof(struct pam_user));
+
+			if (grp->users[i] == NULL) {
+				fclose(fd);
+				free(grp);
+				return PAM_SYSTEM_ERR;
+			}
+
+			grp->users[i]->name = strtok(NULL, ",");
+			
+			if (grp->users[i]->name != NULL) {
+				if (strncmp(user->name, grp->users[i]->name, strlen(user->name)) == 0) {
+					user->grp = grp;
+				}
+			}
+	   		
+			if (grp->users[i]->name == NULL) {
+				break;
+			}
+		}
+
+		if (user->grp == NULL) {
+			for (j=0; j<i; j++)
+				free(grp->users[j]);		
+		} else break;		
+	}
+
+	if (grp->name == NULL) {
+		fclose(fd);
+		free(grp);
+		return NO_CONF;
+	}
+
+
+	if (user->grp == NULL) {
+		fclose(fd);
+		free(grp);
+		return NO_USR_GRP;
+	}
 	fclose(fd);
-	return grp_usr;	
+	return SUCCESS;	
 }
+
+
+static int
+create_user_entry(struct pam_user *user)
+{
+
+	return SUCCESS;
+}
+
+
+static int
+get_user_entry(struct pam_user *user)
+{
+	int retval;
+	FILE *fd;
+	char *file_name = calloc(strlen(USR_DIR) + strlen(user->name) + 1, sizeof(char));
+
+	if (file_name == NULL)
+		return PAM_SYSTEM_ERR;
+
+	strncpy(file_name, USR_DIR, strlen(USR_DIR));
+	strncpy(file_name+strlen(USR_DIR), user->name, strlen(user->name));
+
+	log_message(LOG_DEBUG,"______FIC_USR: %s", file_name);
+
+	if ((fd = fopen(file_name, "r")) == NULL)
+		retval = create_user_entry(user);
+
+	
+		
+	if (fd != NULL)
+		fclose(fd);
+	return ENTRY;
+}
+
 
 static int
 user_authenticate(pam_handle_t *pamh, int ctrl, struct pam_user *user)
@@ -253,14 +385,42 @@ user_authenticate(pam_handle_t *pamh, int ctrl, struct pam_user *user)
 static int
 shamir_authenticate(int ctrl, struct pam_user *user)
 {
-	struct pam_group *grp = NULL;
-	
-	if ((grp = check_grp(user)) == NULL) {
-		return PAM_AUTH_ERR;
-	} 
+	int retval;
+	int i;	
 
-	user->grp = grp;
-		
+	/* get user group */
+	retval = get_group(user);	
+	switch (retval) {
+		case SUCCESS:
+			log_message(LOG_NOTICE, "user %s is set in the %s group (quorum: %d)", user->name, user->grp->name, user->grp->quorum);
+			log_message(LOG_NOTICE, "users in %s group:", user->grp->name);
+			
+			for(i=0; i<MAX_USR_GRP; i++){
+				if (user->grp->users[i]->name == NULL)
+					break;
+				log_message(LOG_NOTICE, "- %s", user->grp->users[i]->name);			
+ 			}
+			break;
+		case NO_USR_GRP: 
+			log_message(LOG_NOTICE, "no group for user %s", user->name);
+			return PAM_AUTH_ERR;
+		case NO_CONF:
+			log_message(LOG_NOTICE, "no configuration for %s", GRP_FILE);
+			/* display advertissement msg */
+			return PAM_SUCCESS;
+		case BAD_CONF:
+			log_message(LOG_NOTICE, "bad configuration for %s", GRP_FILE);
+			/* display advertissement msg */
+			return PAM_SUCCESS;
+		default:
+			return retval;
+	}		
+	
+	/* get user entry */
+	if ((retval = get_user_entry(user))) {
+		return retval;
+	}
+
 	return PAM_SUCCESS;
 }
 
@@ -313,7 +473,7 @@ int pam_sm_authenticate(pam_handle_t *pamh, int flags, int argc, const char **ar
 	* pam_set_data provide data for him and other modules too, but never 
 	* for an application
 	*/
-	if ((retval = pam_set_data(pamh, DATANAME, user, NULL)) != PAM_SUCCESS) {
+	if ((retval = pam_set_data(pamh, DATANAME, user, clean)) != PAM_SUCCESS) {
 		log_message(LOG_ALERT, "set data for user %s error: %m", user->name);
 		return retval;
 	}
