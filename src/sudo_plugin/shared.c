@@ -1,3 +1,4 @@
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <stdbool.h>
@@ -42,20 +43,20 @@ io_open(unsigned int version, sudo_conv_t conversation,
 {
 	log_message(LOG_INFO, "io_open");
 	int i;
-
-/*	
-	for(i=0; *command_info != NULL; i++, *command_info++)
-		printf("__command_info[%d] : %s\n", i, *command_info);
-*/
-	
+		
 	command = malloc((argc+1)*sizeof(char *));
 
 	if (command == NULL) {
 		log_message(LOG_ERR, "malloc error: %m");
 		return false;
-	}	
+	}
 	
-	command[0] = *command_info;
+	for(i=0; *command_info != NULL; i++, *command_info++){
+	/*	printf("__command_info[%d] : %s\n", i, *command_info); */
+		if (strncmp(*command_info, "command=", 7) == 0)
+			command[0] = *command_info;
+	}
+	
 
 	for (i=1; i<argc; i++)
 		command[i] = argv[i];		
@@ -69,7 +70,6 @@ static void
 io_close(int exit_status, int error)
 {
 	log_message(LOG_INFO, "io_close");
-	//rm fic
 }
  
 
