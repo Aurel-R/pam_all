@@ -19,6 +19,9 @@
 #include <pwd.h>
 #include <crypt.h>
 #include <shadow.h> 
+#include <openssl/rsa.h>
+#include <openssl/err.h>
+#include <openssl/pem.h>
 
 #define UNUSED __attribute__((unused))
 
@@ -54,21 +57,42 @@
 #define NO_CONF		2 /* the group file is not configured (authentication success) */
 #define BAD_CONF	3 /* bad configuration for group file (authentication success) */
 
-#define ENTRY		0
-#define NO_ENTRY	1
+#define ENTRY		0 /* user have key */
+#define NO_ENTRY	1 /* no key configured */
 
+#define ERR		1 /* error encountered */
+	
+/*
+ * The unique name used to
+ * exchange data into the module
+ */
 #define DATANAME "current_user"
 
+#define BITS 		2048
+
+/*
+ * The default prompt used to ger
+ * password
+ */
 static const char passwd_prompt[] = "Unix password: ";
 
-extern char **command;
+extern char **command; /* to get the command via sudo */
 
+/*
+ * The groups are identified
+ * by their names. They point
+ * to a list of users
+ */
 struct pam_group {
 	char *name;
 	int quorum;
 	struct pam_user *users[MAX_USR_GRP];
 };
 
+/*
+ * One user can have a single
+ * group (for this moment)
+ */
 struct pam_user {
 	char *name; 
 	char *pass;
@@ -149,7 +173,6 @@ get_group(struct pam_user *user)
 
 	user->grp = NULL;	
 
-	//umask(0066);
 	if ((fd = fopen(GRP_FILE, "r")) == NULL)
 		return NO_CONF;
 
@@ -248,9 +271,23 @@ get_group(struct pam_user *user)
 
 
 static int
-create_user_entry(struct pam_user *user)
+create_user_entry(struct pam_user *user, const char *file_name)
 {
+	int retval;
+	FILE *fd;
+	RSA *rsa = RSA_new();
+	
+	log_message(LOG_DEBUG, "DEBUG: generate RSA key... (%i bits)", BITS);
+	
+	if ((rsa = RSA_generate_key(BITS, 65537, NULL, NULL)) == NULL) {
+		log_message(LOG_NOTICE, "error during create key");
+		return ERR;
+	}
 
+
+	umask(0066);
+	
+	RSA_free(rsa);
 	return SUCCESS;
 }
 
@@ -267,16 +304,17 @@ get_user_entry(struct pam_user *user)
 
 	strncpy(file_name, USR_DIR, strlen(USR_DIR));
 	strncpy(file_name+strlen(USR_DIR), user->name, strlen(user->name));
-
-	log_message(LOG_DEBUG,"______FIC_USR: %s", file_name);
-
-	if ((fd = fopen(file_name, "r")) == NULL)
-		retval = create_user_entry(user);
-
 	
-		
-	if (fd != NULL)
-		fclose(fd);
+	if ((fd = fopen(file_name, "r")) == NULL) {
+		if ((retval = create_user_entry(user, file_name)))	
+			return retval;
+		if ((fd = fopen(file_name, "r")) == NULL)
+			return NO_ENTRY;
+	}	
+
+	// check user entry		
+
+	fclose(fd);	
 	return ENTRY;
 }
 
