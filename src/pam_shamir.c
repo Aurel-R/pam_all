@@ -22,6 +22,7 @@
 #include <openssl/rsa.h>
 #include <openssl/err.h>
 #include <openssl/pem.h>
+#include <openssl/rand.h>
 
 #define UNUSED __attribute__((unused))
 
@@ -71,7 +72,7 @@
 #define BITS 		2048
 
 /*
- * The default prompt used to ger
+ * The default prompt used to get
  * password
  */
 static const char passwd_prompt[] = "Unix password: ";
@@ -271,48 +272,113 @@ get_group(struct pam_user *user)
 
 
 static int
-create_user_entry(struct pam_user *user, const char *file_name)
+create_user_entry(struct pam_user *user, const char *pub_file_name, const char *priv_file_name)
 {
-	int retval;
 	FILE *fd;
 	RSA *rsa = RSA_new();
 	
 	log_message(LOG_DEBUG, "DEBUG: generate RSA key... (%i bits)", BITS);
+
+	RAND_load_file("/dev/urand", 128);
 	
 	if ((rsa = RSA_generate_key(BITS, 65537, NULL, NULL)) == NULL) {
-		log_message(LOG_NOTICE, "error during create key");
+		log_message(LOG_NOTICE, "error during  key creation");
 		return ERR;
 	}
 
+	umask(0022); /* -rw-r--r--*/	
+	if ((fd = fopen(pub_file_name, "w+")) == NULL)
+		return ERR;
 
-	umask(0066);
+	if (!PEM_write_RSAPublicKey(fd, rsa)) {
+		log_message(LOG_NOTICE, "error during save public key");
+		RSA_free(rsa);
+		fclose(fd);
+		return ERR;
+	}
 	
+	fclose(fd);
+
+	umask(0066); /* -rw------- */
+	if ((fd = fopen(priv_file_name, "w+")) == NULL)
+		return ERR;
+
+	if(!PEM_write_RSAPrivateKey(fd, rsa, EVP_des_ede3_cbc(), (unsigned char *)user->pass, strlen(user->pass), NULL, NULL)) {
+		log_message(LOG_NOTICE, "error during save private key");
+		RSA_free(rsa);
+		fclose(fd);
+		return ERR;
+	}
+
 	RSA_free(rsa);
+	fclose(fd);
 	return SUCCESS;
 }
 
 
+/*
+ * flag is used to force
+ * the keys creation
+ */
 static int
-get_user_entry(struct pam_user *user)
+verify_user_entry(struct pam_user *user, int flag)
 {
 	int retval;
 	FILE *fd;
-	char *file_name = calloc(strlen(USR_DIR) + strlen(user->name) + 1, sizeof(char));
+	char *pub_file_name = calloc(strlen(USR_DIR) + strlen(user->name) + 4 + 1, sizeof(char)); /* +4(.pub) +1('\0') */
+	char *priv_file_name = calloc(strlen(USR_DIR) + strlen(user->name) + 1, sizeof(char));
 
-	if (file_name == NULL)
+	if (pub_file_name == NULL || priv_file_name == NULL)
 		return PAM_SYSTEM_ERR;
 
-	strncpy(file_name, USR_DIR, strlen(USR_DIR));
-	strncpy(file_name+strlen(USR_DIR), user->name, strlen(user->name));
-	
-	if ((fd = fopen(file_name, "r")) == NULL) {
-		if ((retval = create_user_entry(user, file_name)))	
+	strncpy(priv_file_name, USR_DIR, strlen(USR_DIR));
+	strncpy(priv_file_name+strlen(USR_DIR), user->name, strlen(user->name));
+
+	strncpy(pub_file_name, USR_DIR, strlen(USR_DIR));
+	strncpy(pub_file_name+strlen(USR_DIR), user->name, strlen(user->name));
+	strncpy(pub_file_name+strlen(USR_DIR)+strlen(user->name), ".pub", 4); 
+
+	if (flag) {
+		if ((retval = create_user_entry(user, pub_file_name, priv_file_name))) {
+			free(pub_file_name);
+			free(priv_file_name);	
 			return retval;
-		if ((fd = fopen(file_name, "r")) == NULL)
+		}	
+	}
+	
+	if ((fd = fopen(priv_file_name, "r")) == NULL) {
+		if ((retval = create_user_entry(user, pub_file_name, priv_file_name))) {
+			free(pub_file_name);
+			free(priv_file_name);	
+			return retval;
+		}
+		if ((fd = fopen(priv_file_name, "r")) == NULL) {
+			free(pub_file_name);
+			free(priv_file_name);
 			return NO_ENTRY;
+		}
 	}	
 
-	// check user entry		
+	// get rsa priv
+
+	fclose(fd);
+
+	if ((fd = fopen(pub_file_name, "r")) == NULL) {
+		if ((retval = create_user_entry(user, pub_file_name, priv_file_name))) {
+			free(pub_file_name);
+			free(priv_file_name);
+			return retval;
+		}
+		if ((fd = fopen(pub_file_name, "r")) == NULL) {
+			free(pub_file_name);
+			free(priv_file_name);
+			return NO_ENTRY;
+		}
+	}
+
+	//get rsa pub
+
+	//verify rsa key		
 
 	fclose(fd);	
 	return ENTRY;
@@ -454,8 +520,7 @@ shamir_authenticate(int ctrl, struct pam_user *user)
 			return retval;
 	}		
 	
-	/* get user entry */
-	if ((retval = get_user_entry(user))) {
+	if ((retval = verify_user_entry(user, 0))) {
 		return retval;
 	}
 
@@ -502,7 +567,7 @@ int pam_sm_authenticate(pam_handle_t *pamh, int flags, int argc, const char **ar
 	* his entry if necessary
 	*/
 	if ((retval = shamir_authenticate(ctrl, user)) != PAM_SUCCESS) {
-		log_message(LOG_NOTICE, "can not identify the user %s in group file: %m", user->name);
+		log_message(LOG_NOTICE, "can not identify the user %s for shamir: %m", user->name);
 		return retval;
 	}
 

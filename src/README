@@ -1,5 +1,15 @@
+I'll use autoconf and automake later... 
+
+#########################################################
+#						       	#
+#		   Pre-installation		       	#
+#							#
+#########################################################
+
 --- dependencies ---
-	1. install libpam0g and libpam0g-dev
+	1. install:
+		- libpam0g and libpam0g-dev
+		- libssl and libssl-dev
 
 --- secure your session ---
 	1. open an independent terminal
@@ -9,6 +19,7 @@
 
 (on other terminal) 
 
+######################################################
 
 --- make directory ---
 	1. mkdir /etc/shared		(contains groups file)
