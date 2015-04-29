@@ -38,7 +38,7 @@
 
 /*
  * Contains the private and public 
- * users key. One file by user.
+ * users key. 
  */ 
 #define USR_DIR  "/etc/shared/users/"
 
@@ -135,7 +135,7 @@ log_message(int level, char *msg, ...)
 	va_end(args);
 }
 
-
+/* specific to the passwd structure */
 static void
 cleanup(void **data)
 {
@@ -148,6 +148,7 @@ cleanup(void **data)
 	}
 }
 
+/* specific to the data exhange into module */
 static void 
 clean(pam_handle_t *pamh UNUSED, void *data, int error_status UNUSED)
 {
@@ -162,7 +163,10 @@ struct pam_user *get_data(const pam_handle_t *pamh)
 	return (pam_get_data(pamh, DATANAME, &data) == PAM_SUCCESS) ? data : NULL;
 }
 
-
+/*
+ * Get the group of user passed
+ * in argument
+ */
 static int
 get_group(struct pam_user *user)
 {
@@ -270,7 +274,11 @@ get_group(struct pam_user *user)
 	return SUCCESS;	
 }
 
-
+/*
+ * create entry files for user
+ * with his public and private
+ * keys
+ */
 static int
 create_user_entry(struct pam_user *user, const char *pub_file_name, const char *priv_file_name)
 {
@@ -373,7 +381,10 @@ verify_user_entry(struct pam_user *user, int flag)
 	return ENTRY;
 }
 
-
+/*
+ * The standard user authenticatation
+ * used to fill the user structure
+ */
 static int
 user_authenticate(pam_handle_t *pamh, int ctrl, struct pam_user *user)
 {
@@ -474,7 +485,7 @@ user_authenticate(pam_handle_t *pamh, int ctrl, struct pam_user *user)
 	return PAM_SUCCESS;
 }
 
-
+/* The Shamir authentication */
 static int
 shamir_authenticate(int ctrl, struct pam_user *user)
 {
