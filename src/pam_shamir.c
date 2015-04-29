@@ -317,14 +317,16 @@ create_user_entry(struct pam_user *user, const char *pub_file_name, const char *
 
 
 /*
- * flag is used to force
- * the keys creation
+ * This function verify if user have an entry.
+ * If haven't, a new entry will be created.
+ * else, just test key pairs. It's possible to
+ * force a new key pairs creation with flag 
  */
 static int
 verify_user_entry(struct pam_user *user, int flag)
 {
 	int retval;
-	FILE *fd;
+	FILE *fd_pub, *fd_priv;
 	char *pub_file_name = calloc(strlen(USR_DIR) + strlen(user->name) + 4 + 1, sizeof(char)); /* +4(.pub) +1('\0') */
 	char *priv_file_name = calloc(strlen(USR_DIR) + strlen(user->name) + 1, sizeof(char));
 
@@ -346,13 +348,14 @@ verify_user_entry(struct pam_user *user, int flag)
 		}	
 	}
 	
-	if ((fd = fopen(priv_file_name, "r")) == NULL) {
+	if ( ((fd_priv = fopen(priv_file_name, "r")) == NULL) || ((fd_pub = fopen(pub_file_name, "r")) == NULL) ) {
 		if ((retval = create_user_entry(user, pub_file_name, priv_file_name))) {
 			free(pub_file_name);
 			free(priv_file_name);	
 			return retval;
 		}
-		if ((fd = fopen(priv_file_name, "r")) == NULL) {
+
+		if ( ((fd_priv = fopen(priv_file_name, "r")) == NULL) || ((fd_pub = fopen(pub_file_name, "r")) == NULL) ) {
 			free(pub_file_name);
 			free(priv_file_name);
 			return NO_ENTRY;
@@ -360,27 +363,13 @@ verify_user_entry(struct pam_user *user, int flag)
 	}	
 
 	// get rsa priv
+	// get rsa pub
+	// verify rsa key
 
-	fclose(fd);
-
-	if ((fd = fopen(pub_file_name, "r")) == NULL) {
-		if ((retval = create_user_entry(user, pub_file_name, priv_file_name))) {
-			free(pub_file_name);
-			free(priv_file_name);
-			return retval;
-		}
-		if ((fd = fopen(pub_file_name, "r")) == NULL) {
-			free(pub_file_name);
-			free(priv_file_name);
-			return NO_ENTRY;
-		}
-	}
-
-	//get rsa pub
-
-	//verify rsa key		
-
-	fclose(fd);	
+	fclose(fd_pub);
+	fclose(fd_priv);
+	free(pub_file_name);
+	free(priv_file_name);	
 	return ENTRY;
 }
 
