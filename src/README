@@ -21,6 +21,8 @@ I'll use autoconf and automake later...
 
 ######################################################
 
+Info: add an user in sudo grp ->  usermod -a -G sudo UserName
+
 --- make directory ---
 	1. mkdir /etc/shared		(contains groups file)
 	2. mkdir /etc/shared/users	(contains users files)
@@ -35,26 +37,8 @@ I'll use autoconf and automake later...
 
 
 --- install sudo plugin ---
-	1. make
-	2. copy shared.so in /usr/lib/sudo/
-	3. chown root:root pam_shamir.so
-	4. chmod 644 shared.so
+	1. ln -s /lib/security/pam_shamir.so /usr/lib/sudo/shared.so
 
-	
---- configure pam ---
-	1. edit /etc/pam.d/sudo  (adapt the module path):
-  
-	> +	auth       required   /lib/x86_64-linux-gnu/security/pam_shamir.so debug
-	>	auth       required   pam_env.so readenv=1 user_readenv=0
-	>	auth       required   pam_env.so readenv=1 envfile=/etc/default/locale user_readenv=0
-	> -	@include common-auth
-	> +	auth    [success=1 default=ignore]      pam_unix.so nullok_secure use_first_pass 
-	> +	auth    requisite                       pam_deny.so
-	> +	auth    required                        pam_permit.so
-	> +	auth    optional                        pam_cap.so
-	>	@include common-account
-	> +	session	required	/lib/x86_64-linux-gnu/security/pam_shamir.so
-	>	@include common-session-noninteractive 
 
 
 --- configure sudoers ---
@@ -70,6 +54,35 @@ I'll use autoconf and automake later...
 	>	Plugin	sudoers_policy	sudoers.so
 	>	Plugin	sudoers_io	sudoers.so
 	> +	Plugin  shared_io	shared.so
+
+
+	
+--- configure pam ---
+	1. edit /etc/pam.d/sudo  (adapt the module path):
+  
+	> +	auth       required   			/lib/x86_64-linux-gnu/security/pam_shamir.so debug
+	>	auth       required   			pam_env.so readenv=1 user_readenv=0
+	>	auth       required   			pam_env.so readenv=1 envfile=/etc/default/locale user_readenv=0
+	> -	@include common-auth
+	> +	auth    [success=1 default=ignore]      pam_unix.so nullok_secure use_first_pass 
+	> +	auth    requisite                       pam_deny.so
+	> +	auth    required                        pam_permit.so
+	> +	auth    optional                        pam_cap.so
+	>	@include common-account
+	> +	session	required			/lib/x86_64-linux-gnu/security/pam_shamir.so
+	>	@include common-session-noninteractive 
+
+
+--- configure pam 2 ---
+	1. edit /etc/pam.d/common-password :
+
+	>	password        [success=1 default=ignore]      pam_unix.so obscure sha512
+	>	password        requisite                       pam_deny.so
+	>	password        required                        pam_permit.so
+	>	password        optional        		pam_gnome_keyring.so
+	> +	password        required        		/lib/x86_64-linux-gnu/security/pam_shamir.so
+
+
 
 
 --- testing module ---

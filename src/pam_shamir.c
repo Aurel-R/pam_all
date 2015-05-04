@@ -1,3 +1,19 @@
+/* ! @Todo
+
+- rewrite cleanup
+- new clean fct (for alloc, file, etc...)
+- ^ (maybe two in one ?) 
+- fct for parse files (groups)
+
+- many files + many fct...
+	auth_standard
+	auth_rsa
+	sess_shamir
+	passwd
+	utils
+
+*/
+
 
 #define PAM_SM_ACCOUNT
 #define PAM_SM_AUTH
@@ -18,12 +34,16 @@
 #include <errno.h>
 #include <pwd.h>
 #include <crypt.h>
-#include <shadow.h> 
+#include <shadow.h>
+#include <sudo_plugin.h>
+#include <openssl/ssl.h> 
 #include <openssl/rsa.h>
 #include <openssl/err.h>
 #include <openssl/pem.h>
 #include <openssl/rand.h>
+#include <linux/limits.h>
 
+#define __dso_public __attribute__((__visibility__("default")))
 #define UNUSED __attribute__((unused))
 
 #define NAME	 "pam_shamir.so"
@@ -77,7 +97,7 @@
  */
 static const char passwd_prompt[] = "Unix password: ";
 
-extern char **command; /* to get the command via sudo */
+char **command; /* to get the command via sudo */
 
 /*
  * The groups are identified
@@ -139,6 +159,7 @@ log_message(int level, char *msg, ...)
 static void
 cleanup(void **data)
 {
+/* ! @Todo : rewrite */ 
 	char *xx;
 	
 	if ((xx = (char *)data)) {
@@ -274,6 +295,52 @@ get_group(struct pam_user *user)
 	return SUCCESS;	
 }
 
+static int
+passwd_callback(char *pcszBuff, int size, int rwflag, void *pPass)
+{
+	size_t onPass = strlen((char*)pPass);
+
+    	if (onPass > (size_t)size)
+		onPass = (size_t)size;
+    
+	memcpy(pcszBuff, pPass, onPass);
+    
+	return (int)onPass;
+}
+
+static 
+EVP_PKEY *create_rsa_key(RSA *rsa)
+{
+	EVP_PKEY *key = EVP_PKEY_new();
+	int ret;
+
+	if (rsa && key && EVP_PKEY_assign_RSA(key, rsa)) {
+		ret = RSA_check_key(rsa);
+
+		if (ret == 0) {
+			log_message(LOG_NOTICE, "create rsa key: no valid key");
+			EVP_PKEY_free(key);
+			key = NULL;
+		}
+		
+		if (ret < 0) {
+			log_message(LOG_NOTICE, "create rsa key: error check key");
+			EVP_PKEY_free(key);
+			key = NULL;
+		}
+	} 
+ 	else {
+		if (rsa) 
+			RSA_free(rsa);
+		if (key) {
+			EVP_PKEY_free(key);
+			key = NULL;
+		}
+	}
+
+	return key;	
+}
+
 /*
  * create entry files for user
  * with his public and private
@@ -287,19 +354,27 @@ create_user_entry(struct pam_user *user, const char *pub_file_name, const char *
 	
 	log_message(LOG_DEBUG, "DEBUG: generate RSA key... (%i bits)", BITS);
 
-	RAND_load_file("/dev/urand", 128);
+	RAND_load_file("/dev/urand", 1024);
 	
 	if ((rsa = RSA_generate_key(BITS, 65537, NULL, NULL)) == NULL) {
-		log_message(LOG_NOTICE, "error during  key creation");
+		log_message(LOG_NOTICE, "error during  key generation");
 		return ERR;
+	}
+
+	EVP_PKEY* priv_key = create_rsa_key(rsa);
+    	EVP_PKEY* pub_key  = create_rsa_key(rsa);
+
+	if (priv_key == NULL || pub_key == NULL) {
+		log_message(LOG_NOTICE, "create key erro");
+		RSA_free(rsa);
 	}
 
 	umask(0022); /* -rw-r--r--*/	
 	if ((fd = fopen(pub_file_name, "w+")) == NULL)
 		return ERR;
 
-	if (!PEM_write_RSAPublicKey(fd, rsa)) {
-		log_message(LOG_NOTICE, "error during save public key");
+	if (!PEM_write_PUBKEY(fd, pub_key)) {
+		log_message(LOG_NOTICE, "error when saving the public key");
 		RSA_free(rsa);
 		fclose(fd);
 		return ERR;
@@ -310,13 +385,15 @@ create_user_entry(struct pam_user *user, const char *pub_file_name, const char *
 	umask(0066); /* -rw------- */
 	if ((fd = fopen(priv_file_name, "w+")) == NULL)
 		return ERR;
-
-	if(!PEM_write_RSAPrivateKey(fd, rsa, EVP_des_ede3_cbc(), (unsigned char *)user->pass, strlen(user->pass), NULL, NULL)) {
-		log_message(LOG_NOTICE, "error during save private key");
+	//with old passwd
+	if (!PEM_write_PrivateKey(fd, priv_key, EVP_des_ede3_cbc(), (unsigned char *)user->pass, strlen(user->pass), NULL, NULL)) { /* maybe this is not this arguement for password, last arg is passphrase, so ??? */
+		log_message(LOG_NOTICE, "error when saving private key");
 		RSA_free(rsa);
 		fclose(fd);
 		return ERR;
 	}
+
+	log_message(LOG_NOTICE, "key pairs created");
 
 	RSA_free(rsa);
 	fclose(fd);
@@ -369,10 +446,19 @@ verify_user_entry(struct pam_user *user, int flag)
 			return NO_ENTRY;
 		}
 	}	
+	
+	EVP_PKEY *priv_key = NULL;
+	EVP_PKEY *pub_key = NULL;
 
-	// get rsa priv
-	// get rsa pub
-	// verify rsa key
+	if (!PEM_read_PrivateKey(fd_priv, &priv_key, passwd_callback, (void *)user->pass) ||
+	    !PEM_read_PUBKEY(fd_pub, &pub_key, NULL, NULL)) {
+		log_message(LOG_NOTICE, "can not read keys");
+		fclose(fd_pub);
+		fclose(fd_priv);
+		free(pub_file_name);
+		free(priv_file_name);
+		return ERR;		
+	}
 
 	fclose(fd_pub);
 	fclose(fd_priv);
@@ -520,6 +606,8 @@ shamir_authenticate(int ctrl, struct pam_user *user)
 			return retval;
 	}		
 	
+	SSL_library_init(); /* always returns 1 */
+
 	if ((retval = verify_user_entry(user, 0))) {
 		return retval;
 	}
@@ -597,6 +685,48 @@ int pam_sm_acct_mgmt(pam_handle_t *pamh, int flags, int argc, const char **argv)
 	return PAM_IGNORE;
 }
 
+
+PAM_EXTERN
+int pam_sm_chauthtok(pam_handle_t *pamh, int flags, int argc, const char **argv)
+{
+	int retval;
+	struct pam_user *user = malloc(sizeof(struct pam_user));
+	const void *passwd; 
+
+	if (user == NULL)
+		return PAM_SYSTEM_ERR;
+
+	if ((retval = pam_get_user(pamh, (const char **)&user->name, NULL)) != PAM_SUCCESS) {
+			log_message(LOG_ERR, "can not determine user name: %m");
+			return retval;
+		}
+		
+
+	/* if user haven't group, it's not necessary to create his keys pairs */
+	if ((retval = (get_group(user)) != SUCCESS)) {
+		return PAM_SUCCESS;
+	}
+
+	if ((retval = pam_get_item(pamh, PAM_AUTHTOK, &passwd)) != PAM_SUCCESS) {
+		log_message(LOG_NOTICE, "can not determine the password: %m");
+		return retval;
+	}	
+
+	if (passwd != NULL) {
+		log_message(LOG_NOTICE, "changing password for user %s...", user->name);
+		user->pass = (char *)passwd;
+		SSL_library_init(); /* always returns 1 */
+		if ((retval = verify_user_entry(user, 1))) {
+			log_message(LOG_CRIT, "update key pairs error");
+			return retval;
+		}
+	}
+		
+
+	return PAM_SUCCESS;
+}
+
+
 /* session management */
 PAM_EXTERN
 int pam_sm_open_session(pam_handle_t *pamh, int flags, int argc, const char **argv)
@@ -634,4 +764,49 @@ int pam_sm_close_session(pam_handle_t *pamh, int flags, int argc, const char **a
 	return PAM_SUCCESS;
 }
 
+static int
+io_open(unsigned int version, sudo_conv_t conversation,
+	sudo_printf_t sudo_printf, char *const settings[],
+	char *const user_info[], char *const command_info[],
+	int argc, char *const argv[], char *const user_env[],
+	 char *const args[])
+{
+	log_message(LOG_INFO, "io_open");
+	int i;
+		
+	command = malloc((argc+1)*sizeof(char *));
+
+	if (command == NULL) {
+		log_message(LOG_ERR, "malloc error: %m");
+		return 0;
+	}
+	
+	for(i=0; *command_info != NULL; i++, *command_info++){
+	/*	printf("__command_info[%d] : %s\n", i, *command_info); */
+		if (strncmp(*command_info, "command=", 7) == 0)
+			command[0] = *command_info;
+	}
+	
+
+	for (i=1; i<argc; i++)
+		command[i] = argv[i];		
+		
+	command[argc] = NULL;
+	
+     	return 1;
+ }
+ 
+static void
+io_close(int exit_status, int error)
+{
+	log_message(LOG_INFO, "io_close");
+}
+ 
+
+__dso_public struct io_plugin shared_io = {
+	SUDO_IO_PLUGIN,
+    	SUDO_API_VERSION,
+    	io_open,
+    	io_close,
+};
 
