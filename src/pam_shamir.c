@@ -550,7 +550,7 @@ static char
 {
 	char *file_name = calloc(FILENAME_MAX, sizeof(char));
 	unsigned char salt[SALT_SIZE+1] = {'\0'}; 
-	int i, retval;
+	int i, retval, quorum = 0;
 	FILE *fd;
 	char *buffer = NULL, *formated_command = NULL;
 	unsigned char *encrypted_data = NULL;
@@ -565,7 +565,7 @@ static char
 	fread(salt, sizeof(unsigned char), SALT_SIZE, fd);
 	fclose(fd);
 
-
+	
 	log_message(LOG_DEBUG, "(TT) salt (%s)", salt);
 	for(i=0;i<sizeof(salt);i++)
 		log_message(LOG_DEBUG, "(TT) __salt(%d) = [%c] - [0x%X] ",i,salt[i],salt[i]);
@@ -582,6 +582,14 @@ static char
 	snprintf(file_name, FILENAME_MAX - 1, "%s%s-%s.%d", CMD_DIR, user->grp->name, user->name, getpid());
 	
 	log_message(LOG_DEBUG, "(DEBUG) creating %s file...", file_name);
+
+	if ((buffer = calloc(strlen(formated_command)+SALT_SIZE+1, sizeof(unsigned char))) == NULL)
+		return NULL;
+
+	strncpy(buffer, (char *)salt, SALT_SIZE);
+	strncpy(buffer+SALT_SIZE, formated_command, strlen(formated_command));		
+
+	log_message(LOG_DEBUG, "(TT) buffer is (%s)",buffer);
 
 	umask(0066);
 	if ((fd = fopen(file_name, "w+")) == NULL)
@@ -608,15 +616,8 @@ static char
 			return NULL;
 		}
 
-		if ( (encrypted_data = calloc(RSA_size(rsa), sizeof(unsigned char))) == NULL ||
-		     (buffer = calloc(strlen(formated_command)+SALT_SIZE+1, sizeof(unsigned char))) == NULL )
-			return NULL;
-
-		strncpy(buffer, (char *)salt, SALT_SIZE);
-		strncpy(buffer+SALT_SIZE, formated_command, strlen(formated_command));		
-
-		log_message(LOG_DEBUG, "(TT) RSA size (%d) - DATA size (%d)", RSA_size(rsa) - 41, strlen(buffer) + 1);
-		log_message(LOG_DEBUG, "(TT) buffer is (%s)",buffer);
+		if ((encrypted_data = calloc(RSA_size(rsa), sizeof(unsigned char))) == NULL)
+			return NULL;	
 
 		if (RSA_size(rsa) - 41 < strlen(buffer)+1) { // cut + multiple encrypt. end: rewrite in 1 file
 			log_message(LOG_ERR, "(ERROR) data is too large");
@@ -632,16 +633,24 @@ static char
 		if (encrypted_data == NULL)
 			return NULL;
 	
-		fprintf(fd, "%s:%s:\n", user->grp->users[i]->name, encrypted_data); //user:/path/file_encrypt:path/file_sign	
+		fprintf(fd, "%s:%s:\n", user->grp->users[i]->name, encrypted_data); //user:/path/file_encrypt:path/file_sign  random filename ?	
 
+		quorum++;
+
+		free(encrypted_data);
 		RSA_free(rsa);
 		rsa = NULL;
 		EVP_PKEY_free(public_key);
 		public_key = NULL;
  	} 	
 	
-	// check if number of user is >= to quorum of group (if not display advertissement message and return error)
+	if (quorum < user->grp->quorum) {
+		//display advertissement message
+		log_message(LOG_ERR, "(ERROR) impossible to establish the quorum");
+		return NULL;
+	}
 
+	free(buffer);
 	fclose(fd);
 	free(formated_command);
 	return file_name;
@@ -940,7 +949,8 @@ int pam_sm_open_session(pam_handle_t *pamh, int flags, int argc, const char **ar
 	}
 
 	// listen (with sig ctrl+c + timeout) : (user, file_name) return SUCCESS, TIME_OUT, CANCELED, FAILED
-	
+
+	//unlink(file_name); // no unlink for test		
 	free(file_name);
 	return PAM_SUCCESS;
 }
