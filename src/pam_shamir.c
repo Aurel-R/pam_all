@@ -12,6 +12,9 @@
 	passwd
 	utils
 
+- comments 
+- debug message (DEBUG) (ERROR) (WW) (INFO)
+
 */
 
 
@@ -62,6 +65,12 @@
  */ 
 #define USR_DIR  "/etc/shared/users/"
 
+/*
+ * Contains many files with one encrypted 
+ * command and his options. 
+ */
+#define CMD_DIR	 "/var/lib/shamir/"
+
 #define MAX_LINE_LEN 256 /* Maximum line lenght for groups file*/
 #define MAX_USR_GRP  20  /* Maximum users per group */
 
@@ -90,6 +99,8 @@
 #define DATANAME "current_user"
 
 #define BITS 		2048
+#define SALT_SIZE	16 /* in bytes */
+#define RANDOM_FILE	"/dev/urandom"
 
 /*
  * The default prompt used to get
@@ -269,6 +280,8 @@ get_group(struct pam_user *user)
 			}
 	   		
 			if (grp->users[i]->name == NULL) {
+				int pos = strlen(grp->users[i-1]->name) - 1;
+				grp->users[i-1]->name[pos] = '\0';
 				break;
 			}
 		}
@@ -318,13 +331,13 @@ EVP_PKEY *create_rsa_key(RSA *rsa)
 		ret = RSA_check_key(rsa);
 
 		if (ret == 0) {
-			log_message(LOG_NOTICE, "create rsa key: no valid key");
+			log_message(LOG_NOTICE, "(ERROR) create rsa key: no valid key");
 			EVP_PKEY_free(key);
 			key = NULL;
 		}
 		
 		if (ret < 0) {
-			log_message(LOG_NOTICE, "create rsa key: error check key");
+			log_message(LOG_NOTICE, "(ERROR) create rsa key: error check key");
 			EVP_PKEY_free(key);
 			key = NULL;
 		}
@@ -352,12 +365,12 @@ create_user_entry(struct pam_user *user, const char *pub_file_name, const char *
 	FILE *fd;
 	RSA *rsa = RSA_new();
 	
-	log_message(LOG_DEBUG, "DEBUG: generate RSA key... (%i bits)", BITS);
+	log_message(LOG_DEBUG, "(DEBUG) generate RSA key... (%i bits)", BITS);
 
 	RAND_load_file("/dev/urand", 1024);
 	
 	if ((rsa = RSA_generate_key(BITS, 65537, NULL, NULL)) == NULL) {
-		log_message(LOG_NOTICE, "error during  key generation");
+		log_message(LOG_NOTICE, "(ERROR) error during  key generation");
 		return ERR;
 	}
 
@@ -365,7 +378,7 @@ create_user_entry(struct pam_user *user, const char *pub_file_name, const char *
     	EVP_PKEY* pub_key  = create_rsa_key(rsa);
 
 	if (priv_key == NULL || pub_key == NULL) {
-		log_message(LOG_NOTICE, "create key erro");
+		log_message(LOG_NOTICE, "(ERROR) create key error");
 		RSA_free(rsa);
 	}
 
@@ -374,7 +387,7 @@ create_user_entry(struct pam_user *user, const char *pub_file_name, const char *
 		return ERR;
 
 	if (!PEM_write_PUBKEY(fd, pub_key)) {
-		log_message(LOG_NOTICE, "error when saving the public key");
+		log_message(LOG_NOTICE, "(ERROR) error when saving the public key");
 		RSA_free(rsa);
 		fclose(fd);
 		return ERR;
@@ -385,15 +398,15 @@ create_user_entry(struct pam_user *user, const char *pub_file_name, const char *
 	umask(0066); /* -rw------- */
 	if ((fd = fopen(priv_file_name, "w+")) == NULL)
 		return ERR;
-	//with old passwd
-	if (!PEM_write_PrivateKey(fd, priv_key, EVP_des_ede3_cbc(), (unsigned char *)user->pass, strlen(user->pass), NULL, NULL)) { /* maybe this is not this arguement for password, last arg is passphrase, so ??? */
-		log_message(LOG_NOTICE, "error when saving private key");
+	
+	if (!PEM_write_PrivateKey(fd, priv_key, EVP_des_ede3_cbc(), (unsigned char *)user->pass, strlen(user->pass), NULL, NULL)) { 
+		log_message(LOG_NOTICE, "(ERROR) error when saving private key");
 		RSA_free(rsa);
 		fclose(fd);
 		return ERR;
 	}
 
-	log_message(LOG_NOTICE, "key pairs created");
+	log_message(LOG_NOTICE, "(ERROR) key pairs created");
 
 	RSA_free(rsa);
 	fclose(fd);
@@ -449,10 +462,10 @@ verify_user_entry(struct pam_user *user, int flag)
 	
 	EVP_PKEY *priv_key = NULL;
 	EVP_PKEY *pub_key = NULL;
-
+	
 	if (!PEM_read_PrivateKey(fd_priv, &priv_key, passwd_callback, (void *)user->pass) ||
 	    !PEM_read_PUBKEY(fd_pub, &pub_key, NULL, NULL)) {
-		log_message(LOG_NOTICE, "can not read keys");
+		log_message(LOG_NOTICE, "(ERROR) can not read keys");
 		fclose(fd_pub);
 		fclose(fd_priv);
 		free(pub_file_name);
@@ -460,12 +473,181 @@ verify_user_entry(struct pam_user *user, int flag)
 		return ERR;		
 	}
 
+	log_message(LOG_INFO, "(INFO) key pair check successfuly");
+
 	fclose(fd_pub);
 	fclose(fd_priv);
 	free(pub_file_name);
-	free(priv_file_name);	
+	free(priv_file_name);
+	EVP_PKEY_free(priv_key);
+	EVP_PKEY_free(pub_key);	
 	return ENTRY;
 }
+
+
+static char
+*format_command_line(const char **command_line)
+{
+	size_t length = 0, i=0;
+	char *formated_command = NULL;	
+		
+	do {
+		length += strlen(command_line[i]) + 1; /* +1 for sapce and \'0' ending */
+		i++;
+	} while (command_line[i] != NULL);
+
+	formated_command = calloc(length, sizeof(char));
+	if (formated_command == NULL)
+		return NULL;
+
+	length = 0;
+	i = 0;
+
+	do {
+		strncpy(formated_command+length, command_line[i], strlen(command_line[i]));
+		length += strlen(command_line[i]) + 1;
+		formated_command[length-1] = ' ';
+		i++;
+	} while (command_line[i] != NULL);
+
+	formated_command[length] = '\0';
+		
+	return formated_command;
+}
+
+static EVP_PKEY
+*get_public_key(const struct pam_user *user)
+{
+	FILE *fd;
+	EVP_PKEY *pub_key = NULL;
+	char *pub_file_name = calloc(strlen(USR_DIR) + strlen(user->name) + 4 + 1, sizeof(char));	
+	
+	strncpy(pub_file_name, USR_DIR, strlen(USR_DIR));
+	strncpy(pub_file_name+strlen(USR_DIR), user->name, strlen(user->name));
+	strncpy(pub_file_name+strlen(USR_DIR)+strlen(user->name), ".pub", 4); 
+	
+	if ((fd = fopen(pub_file_name, "r")) == NULL) {
+		log_message(LOG_ERR, "(ERROR) can not open %s : %m", pub_file_name);
+		free(pub_file_name);
+		return NULL;
+	}	
+	
+	if (!PEM_read_PUBKEY(fd, &pub_key, NULL, NULL)) {
+		log_message(LOG_ERR, "(ERROR) can not read public key");
+		fclose(fd);
+		free(pub_file_name);
+		return NULL;
+	}
+
+	fclose(fd);
+	free(pub_file_name);
+	return pub_key;
+}
+
+
+static char
+*create_command_file(const struct pam_user *user) 
+{
+	char *file_name = calloc(FILENAME_MAX, sizeof(char));
+	unsigned char salt[SALT_SIZE+1] = {'\0'}; 
+	int i, retval;
+	FILE *fd;
+	char *buffer = NULL, *formated_command = NULL;
+	unsigned char *encrypted_data = NULL;
+	EVP_PKEY *public_key = NULL;
+	
+	if (file_name == NULL)
+		return NULL;
+
+	if ((fd = fopen(RANDOM_FILE, "r")) == NULL)
+		return NULL;
+
+	fread(salt, sizeof(unsigned char), SALT_SIZE, fd);
+	fclose(fd);
+
+
+	log_message(LOG_DEBUG, "(TT) salt (%s)", salt);
+	for(i=0;i<sizeof(salt);i++)
+		log_message(LOG_DEBUG, "(TT) __salt(%d) = [%c] - [0x%X] ",i,salt[i],salt[i]);
+
+
+	
+	if ((formated_command = format_command_line((const char **)command)) == NULL) {
+		log_message(LOG_ERR, "(ERROR) format the command line error");
+		return NULL;
+	}
+	
+	log_message(LOG_DEBUG, "(DEBUG) formated command : %s", formated_command);	
+
+	snprintf(file_name, FILENAME_MAX - 1, "%s%s-%s.%d", CMD_DIR, user->grp->name, user->name, getpid());
+	
+	log_message(LOG_DEBUG, "(DEBUG) creating %s file...", file_name);
+
+	umask(0066);
+	if ((fd = fopen(file_name, "w+")) == NULL)
+		return NULL;
+
+	for (i=0; i<MAX_USR_GRP; i++) {
+		if (user->grp->users[i]->name == NULL)
+			break;
+		if (!strcmp(user->grp->users[i]->name, user->name)) 
+			continue;
+			
+		public_key = get_public_key((const struct pam_user *)user->grp->users[i]);
+
+		if (public_key == NULL) {
+			log_message(LOG_ALERT, "(WW) user %s haven't public key", user->grp->users[i]->name);
+			continue; 
+		}
+		
+		RSA *rsa = RSA_new();
+
+		if ((rsa = EVP_PKEY_get1_RSA(public_key)) == NULL) {
+			log_message(LOG_ERR, "(ERROR) assign RSA public key");
+			RSA_free(rsa);
+			return NULL;
+		}
+
+		if ( (encrypted_data = calloc(RSA_size(rsa), sizeof(unsigned char))) == NULL ||
+		     (buffer = calloc(strlen(formated_command)+SALT_SIZE+1, sizeof(unsigned char))) == NULL )
+			return NULL;
+
+		strncpy(buffer, (char *)salt, SALT_SIZE);
+		strncpy(buffer+SALT_SIZE, formated_command, strlen(formated_command));		
+
+		log_message(LOG_DEBUG, "(TT) RSA size (%d) - DATA size (%d)", RSA_size(rsa) - 41, strlen(buffer) + 1);
+		log_message(LOG_DEBUG, "(TT) buffer is (%s)",buffer);
+
+		if (RSA_size(rsa) - 41 < strlen(buffer)+1) { // cut + multiple encrypt. end: rewrite in 1 file
+			log_message(LOG_ERR, "(ERROR) data is too large");
+		}
+	
+		if ((retval = RSA_public_encrypt(strlen(buffer), (unsigned char *)buffer, (unsigned char *)encrypted_data, rsa, RSA_PKCS1_OAEP_PADDING)) == -1) {
+			log_message(LOG_ERR, "(ERROR) can not encrypt data");
+			RSA_free(rsa);
+			EVP_PKEY_free(public_key);
+			return NULL;
+		}
+
+		if (encrypted_data == NULL)
+			return NULL;
+	
+		fprintf(fd, "%s:%s:\n", user->grp->users[i]->name, encrypted_data); //user:/path/file_encrypt:path/file_sign	
+
+		RSA_free(rsa);
+		rsa = NULL;
+		EVP_PKEY_free(public_key);
+		public_key = NULL;
+ 	} 	
+	
+	// check if number of user is >= to quorum of group (if not display advertissement message and return error)
+
+	fclose(fd);
+	free(formated_command);
+	return file_name;
+}
+
+
 
 /*
  * The standard user authenticatation
@@ -484,13 +666,13 @@ user_authenticate(pam_handle_t *pamh, int ctrl, struct pam_user *user)
 	/* log_message(LOG_DEBUG, "__ADDR_OF_DATA  __AUTH2  user[0x%X]", user); */
 	
 	if (pwd == NULL) {
-		log_message(LOG_CRIT, "malloc() %m");
+		log_message(LOG_CRIT, "(ERROR) malloc() %m");
 		return PAM_SYSTEM_ERR;
 	}
 
 	/* get current user */
 	if ((retval = pam_get_user(pamh, (const char **)&usr, NULL)) != PAM_SUCCESS) {
-		log_message(LOG_ERR, "can not determine user name: %m");
+		log_message(LOG_ERR, "(ERROR) can not determine user name: %m");
 		return retval;
 	}
 
@@ -503,39 +685,39 @@ user_authenticate(pam_handle_t *pamh, int ctrl, struct pam_user *user)
 	strncpy(user->name, usr, buf_len - 1);
 
 	if (ctrl & PAM_DEBUG_ARG)
-		log_message(LOG_DEBUG, "DEBUG: user %s", user->name);
+		log_message(LOG_DEBUG, "(DEBUG) user %s", user->name);
 
 	/*
 	 * we have to get the password from the
 	 * user directly
 	 */
 	if ((retval = pam_prompt(pamh, PAM_PROMPT_ECHO_OFF, &user->pass, "%s", passwd_prompt)) != PAM_SUCCESS) {
-		log_message(LOG_ERR, "can not determine the password: %m");
+		log_message(LOG_ERR, "(ERROR) can not determine the password: %m");
 		return retval;
 	} 
 
 
 	if (user->pass == NULL) {
-		log_message(LOG_NOTICE, "the password is empty");
+		log_message(LOG_NOTICE, "(ERROR) the password is empty");
 		return PAM_AUTH_ERR;
 	}
 
 	
 	/* get user password save in /etc/shadow */
 	if ((pwd = getspnam(user->name)) == NULL) {
-		log_message(LOG_ERR, "can not verify the password for user %s: %m", user->name);
+		log_message(LOG_ERR, "(ERROR) can not verify the password for user %s: %m", user->name);
 		return PAM_USER_UNKNOWN;
 	} 
 
 
 	if ((crypt_password = crypt(user->pass, pwd->sp_pwdp)) == NULL) {
-		log_message(LOG_ERR, "can not crypt password for user %s: %m", user->name);
+		log_message(LOG_ERR, "(ERROR) can not crypt password for user %s: %m", user->name);
 		return PAM_AUTH_ERR;
 	}
 
 	/* compare passwords */
 	if (strcmp(crypt_password, pwd->sp_pwdp)) {
-		log_message(LOG_NOTICE, "incorrect password attempts");
+		log_message(LOG_NOTICE, "(INFO) incorrect password attempts");
 		return PAM_AUTH_ERR;
 	}
 
@@ -548,24 +730,24 @@ user_authenticate(pam_handle_t *pamh, int ctrl, struct pam_user *user)
 	 * So sudo can use the user password automatically
 	 */
 	if ((retval = pam_set_item(pamh, PAM_AUTHTOK, (const void *)user->pass)) != PAM_SUCCESS) {
-		log_message(LOG_ERR, "can not set password item: %m");
+		log_message(LOG_ERR, "(ERROR) can not set password item: %m");
 		return retval;
 	} 
 
 
 	/* associate a tty */
 	if ((retval = pam_get_item(pamh, PAM_TTY, (const void **)&(user->tty))) != PAM_SUCCESS) {
-		log_message(LOG_ERR, "can not determine the tty for %s: %m", user->name);
+		log_message(LOG_ERR, "(ERROR) can not determine the tty for %s: %m", user->name);
 		return retval;
 	}
 	
 	if (user->tty == NULL) {
-		log_message(LOG_ERR, "tty was not found for user %s", user->name);
+		log_message(LOG_ERR, "(ERROR) tty was not found for user %s", user->name);
 		return PAM_AUTH_ERR;
 	}
 	
 	if (ctrl & PAM_DEBUG_ARG)
-		log_message(LOG_DEBUG, "DEBUG: tty %s", user->tty);
+		log_message(LOG_DEBUG, "(DEBUG) tty %s", user->tty);
 
 	cleanup((void *)&pwd);
 	return PAM_SUCCESS;
@@ -592,14 +774,14 @@ shamir_authenticate(int ctrl, struct pam_user *user)
  			}
 			break;
 		case NO_USR_GRP: 
-			log_message(LOG_NOTICE, "no group for user %s", user->name);
+			log_message(LOG_NOTICE, "(INFO) no group for user %s", user->name);
 			return PAM_AUTH_ERR;
 		case NO_CONF:
-			log_message(LOG_NOTICE, "no configuration for %s", GRP_FILE);
+			log_message(LOG_NOTICE, "(WW) no configuration for %s", GRP_FILE);
 			/* display advertissement msg */
 			return PAM_SUCCESS;
 		case BAD_CONF:
-			log_message(LOG_NOTICE, "bad configuration for %s", GRP_FILE);
+			log_message(LOG_NOTICE, "(WW) bad configuration for %s", GRP_FILE);
 			/* display advertissement msg */
 			return PAM_SUCCESS;
 		default:
@@ -630,21 +812,21 @@ int pam_sm_authenticate(pam_handle_t *pamh, int flags, int argc, const char **ar
 	
 	#ifdef DEBUG
 		ctrl |= PAM_DEBUG_ARG;
-		log_message(LOG_DEBUG, "DEBUG: the module called via %s fuction", __func__);
+		log_message(LOG_DEBUG, "(DEBUG) the module called via %s fuction", __func__);
 	#else
 
 	if ((ctrl = _pam_parse(argc, argv)) & PAM_DEBUG_ARG)
-		log_message(LOG_DEBUG, "DEBUG: the module called via %s function", __func__);
+		log_message(LOG_DEBUG, "(DEBUG) the module called via %s function", __func__);
 	
 	#endif
 
 	retval = user_authenticate(pamh, ctrl, user);
 
 	if (retval) {
-		log_message(LOG_NOTICE, "authentication failure");
+		log_message(LOG_NOTICE, "(INFO) authentication failure");
 		
 		if (ctrl & PAM_DEBUG_ARG)
-			log_message(LOG_DEBUG, "DEBUG: end of module");
+			log_message(LOG_DEBUG, "(DEBUG) end of module");
 
 		return retval;
 	}
@@ -655,7 +837,7 @@ int pam_sm_authenticate(pam_handle_t *pamh, int flags, int argc, const char **ar
 	* his entry if necessary
 	*/
 	if ((retval = shamir_authenticate(ctrl, user)) != PAM_SUCCESS) {
-		log_message(LOG_NOTICE, "can not identify the user %s for shamir: %m", user->name);
+		log_message(LOG_NOTICE, "(INFO) can not identify the user %s for shamir: %m", user->name);
 		return retval;
 	}
 
@@ -665,7 +847,7 @@ int pam_sm_authenticate(pam_handle_t *pamh, int flags, int argc, const char **ar
 	* for an application
 	*/
 	if ((retval = pam_set_data(pamh, DATANAME, user, clean)) != PAM_SUCCESS) {
-		log_message(LOG_ALERT, "set data for user %s error: %m", user->name);
+		log_message(LOG_ALERT, "(ERROR) set data for user %s error: %m", user->name);
 		return retval;
 	}
 	
@@ -697,7 +879,7 @@ int pam_sm_chauthtok(pam_handle_t *pamh, int flags, int argc, const char **argv)
 		return PAM_SYSTEM_ERR;
 
 	if ((retval = pam_get_user(pamh, (const char **)&user->name, NULL)) != PAM_SUCCESS) {
-			log_message(LOG_ERR, "can not determine user name: %m");
+			log_message(LOG_ERR, "(ERROR) can not determine user name: %m");
 			return retval;
 		}
 		
@@ -708,21 +890,19 @@ int pam_sm_chauthtok(pam_handle_t *pamh, int flags, int argc, const char **argv)
 	}
 
 	if ((retval = pam_get_item(pamh, PAM_AUTHTOK, &passwd)) != PAM_SUCCESS) {
-		log_message(LOG_NOTICE, "can not determine the password: %m");
+		log_message(LOG_NOTICE, "(ERROR) can not determine the password: %m");
 		return retval;
 	}	
 
 	if (passwd != NULL) {
-		log_message(LOG_NOTICE, "changing password for user %s...", user->name);
+		log_message(LOG_NOTICE, "(INFO) changing password for user %s...", user->name);
 		user->pass = (char *)passwd;
 		SSL_library_init(); /* always returns 1 */
 		if ((retval = verify_user_entry(user, 1))) {
-			log_message(LOG_CRIT, "update key pairs error");
+			log_message(LOG_CRIT, "(ERROR) update key pairs error");
 			return retval;
 		}
 	}
-		
-
 	return PAM_SUCCESS;
 }
 
@@ -731,24 +911,37 @@ int pam_sm_chauthtok(pam_handle_t *pamh, int flags, int argc, const char **argv)
 PAM_EXTERN
 int pam_sm_open_session(pam_handle_t *pamh, int flags, int argc, const char **argv)
 {
-	int i;
+	int i=0;
 	const struct pam_user *user;
+	char *file_name;	
 	
-	
-	for (i=0; *command != NULL; i++, *command++) {
-		log_message(LOG_DEBUG, "_______cmd[%d] : %s", i, *command);
-	}
-	
+	do {
+		log_message(LOG_DEBUG, "(DEBUG) command[%d] : %s", i, command[i]);
+		i++;
+	} while (command[i] != NULL);	
 
 	if ((user = get_data(pamh)) == NULL) {
-		log_message(LOG_CRIT, "impossible to recover the data");
+		log_message(LOG_CRIT, "(ERROR) impossible to recover the data");
 		return PAM_SYSTEM_ERR;
 	}
 
 	/* log_message(LOG_DEBUG, "__ADDR_OF_DATA __SESS user[0x%X] user->name[%s][0x%X]", user, user->name, &user->name); */
+	log_message(LOG_NOTICE, "session opened by %s in %s (member of %s)", user->name, user->tty, user->grp->name);
 
-	log_message(LOG_NOTICE, "session opened by %s in %s", user->name, user->tty);
+	if (strcmp(command[0], "command=/bin/validate") == 0)
+		return PAM_SUCCESS;
+	
+	log_message(LOG_NOTICE, "(INFO) starting request...");
+	SSL_library_init(); /* always returns 1 */
+	
+	if ((file_name = create_command_file(user)) == NULL) {
+		log_message(LOG_ERR, "(ERROR) can not create command file: %m");
+		return PAM_SESSION_ERR;
+	}
 
+	// listen (with sig ctrl+c + timeout) : (user, file_name) return SUCCESS, TIME_OUT, CANCELED, FAILED
+	
+	free(file_name);
 	return PAM_SUCCESS;
 }
 
@@ -759,7 +952,7 @@ int pam_sm_close_session(pam_handle_t *pamh, int flags, int argc, const char **a
 	if ((retval = pam_set_data(pamh, DATANAME, NULL, NULL)) != PAM_SUCCESS)
 		return PAM_SYSTEM_ERR;
 
-	log_message(LOG_DEBUG, "DEBUG: session closed");
+	log_message(LOG_DEBUG, "(DEBUG) session closed");
 	
 	return PAM_SUCCESS;
 }
@@ -771,13 +964,13 @@ io_open(unsigned int version, sudo_conv_t conversation,
 	int argc, char *const argv[], char *const user_env[],
 	 char *const args[])
 {
-	log_message(LOG_INFO, "io_open");
+	log_message(LOG_DEBUG, "(DEBUG) io_open");
 	int i;
 		
 	command = malloc((argc+1)*sizeof(char *));
 
 	if (command == NULL) {
-		log_message(LOG_ERR, "malloc error: %m");
+		log_message(LOG_ERR, "(ERROR) malloc error: %m");
 		return 0;
 	}
 	
@@ -799,7 +992,7 @@ io_open(unsigned int version, sudo_conv_t conversation,
 static void
 io_close(int exit_status, int error)
 {
-	log_message(LOG_INFO, "io_close");
+	log_message(LOG_DEBUG, "(DEBUG) io_close");
 }
  
 
