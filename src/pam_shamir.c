@@ -633,7 +633,7 @@ static char
 		if (encrypted_data == NULL)
 			return NULL;
 	
-		fprintf(fd, "%s:%s:\n", user->grp->users[i]->name, encrypted_data); //user:/path/file_encrypt:path/file_sign  random filename ?	
+		fprintf(fd, "%s:%s:\n", user->grp->users[i]->name, encrypted_data); //user:/path/file_encrypt:/path/file_sign  random filename ?	
 
 		quorum++;
 
@@ -967,6 +967,45 @@ int pam_sm_close_session(pam_handle_t *pamh, int flags, int argc, const char **a
 	return PAM_SUCCESS;
 }
 
+
+static char
+*is_a_symlink(char *file)
+{
+	char *link, *tmp_link;
+	int ret;
+	struct stat sb;
+
+	if (lstat(file, &sb) == -1) 
+		return NULL;
+	
+	link = malloc(sb.st_size + 1);
+	
+	if (link == NULL) { 
+		log_message(LOG_ERR, "(ERROR) %m");
+		fprintf(stderr, "malloc: %m");
+		return NULL;	
+	}
+
+	ret = readlink(file, link, sb.st_size + 1);
+
+        if (ret < 0) 
+		return NULL;
+
+   	if (ret > sb.st_size) {
+        	fprintf(stderr, "symlink increased in size between lstat() and readlink()\n");
+        	return NULL;
+    	}
+
+   	link[sb.st_size] = '\0';
+
+   	log_message(LOG_INFO, "(TT) '%s' points to '%s'", file, link);	
+
+	if ((tmp_link = is_a_symlink(link)) == NULL)
+		return link;
+
+	return tmp_link;
+}
+
 static int
 io_open(unsigned int version, sudo_conv_t conversation,
 	sudo_printf_t sudo_printf, char *const settings[],
@@ -985,15 +1024,17 @@ io_open(unsigned int version, sudo_conv_t conversation,
 	}
 	
 	for(i=0; *command_info != NULL; i++, *command_info++){
-	/*	printf("__command_info[%d] : %s\n", i, *command_info); */
 		if (strncmp(*command_info, "command=", 7) == 0)
 			command[0] = *command_info;
 	}
-	
 
-	for (i=1; i<argc; i++)
+	for (i=1; i<argc; i++) {
+		if ((command[i] = is_a_symlink(argv[i])) != NULL) {
+			continue;
+		}		
 		command[i] = argv[i];		
-		
+	}
+
 	command[argc] = NULL;
 	
      	return 1;
@@ -1003,6 +1044,7 @@ static void
 io_close(int exit_status, int error)
 {
 	log_message(LOG_DEBUG, "(DEBUG) io_close");
+	free(command);
 }
  
 
