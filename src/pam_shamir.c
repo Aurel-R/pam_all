@@ -101,6 +101,8 @@
 #define BITS 		2048
 #define SALT_SIZE	16 /* in bytes */
 #define RANDOM_FILE	"/dev/urandom"
+#define CARAC		"0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz"
+
 
 /*
  * The default prompt used to get
@@ -544,12 +546,46 @@ static EVP_PKEY
 	return pub_key;
 }
 
+static unsigned char
+*alea(size_t len, unsigned char *table)
+{
+	FILE *fd;
+	int i = 0;
+	unsigned char carac, *random_buffer = NULL;	
+	random_buffer = calloc(len + 1, sizeof(unsigned char));
+
+	if (random_buffer == NULL)
+		return NULL;
+	
+	if ((fd = fopen(RANDOM_FILE, "r")) == NULL)
+		return NULL;
+
+	if (table != NULL) {
+		do  {	
+			fread(&carac, sizeof(unsigned char), 1, fd);
+			if ((strchr((const char *)table, carac)) != NULL) {
+				if (carac == 0)
+					carac = (unsigned char)48;
+				random_buffer[i] = carac;
+				i++;
+			}
+		} while (i != len);		
+	} 
+
+	else fread(random_buffer, sizeof(unsigned char), len, fd);
+		
+	fclose(fd);
+	return random_buffer;
+}
+
+
 
 static char
 *create_command_file(const struct pam_user *user) 
 {
 	char *file_name = calloc(FILENAME_MAX, sizeof(char));
-	unsigned char salt[SALT_SIZE+1] = {'\0'}; 
+	//unsigned char salt[SALT_SIZE+1] = {'\0'}; 
+	unsigned char *salt;
 	int i, retval, quorum = 0;
 	FILE *fd;
 	char *buffer = NULL, *formated_command = NULL;
@@ -559,15 +595,15 @@ static char
 	if (file_name == NULL)
 		return NULL;
 
-	if ((fd = fopen(RANDOM_FILE, "r")) == NULL)
+	salt = alea(SALT_SIZE, (unsigned char *)CARAC);
+
+	if (salt == NULL) {	
+		log_message(LOG_ERR, "(ERROR) set random salt: %m");
 		return NULL;
-
-	fread(salt, sizeof(unsigned char), SALT_SIZE, fd);
-	fclose(fd);
-
+	}
 	
 	log_message(LOG_DEBUG, "(TT) salt (%s)", salt);
-	for(i=0;i<sizeof(salt);i++)
+	for(i=0;i<SALT_SIZE+1;i++)
 		log_message(LOG_DEBUG, "(TT) __salt(%d) = [%c] - [0x%X] ",i,salt[i],salt[i]);
 
 
@@ -633,6 +669,7 @@ static char
 		if (encrypted_data == NULL)
 			return NULL;
 	
+	//	frpintf(fd, "%s:%s:\n", user->grp->users[i]->name, encrypted_file);
 		fprintf(fd, "%s:%s:\n", user->grp->users[i]->name, encrypted_data); //user:/path/file_encrypt:/path/file_sign  random filename ?	
 
 		quorum++;
@@ -653,6 +690,7 @@ static char
 	free(buffer);
 	fclose(fd);
 	free(formated_command);
+	free(salt);
 	return file_name;
 }
 
