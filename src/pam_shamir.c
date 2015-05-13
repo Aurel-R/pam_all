@@ -15,6 +15,15 @@
 - comments 
 - debug message (DEBUG) (ERROR) (WW) (INFO)
 
+- conf file, edit = ok, but others admins can't check the modifcations in file after validate :
+in session open, cp fic and open it
+in session close,create patch and  get the validatation to others admins, and appli patch if ok
+
+
+-Actual group :
+groupName:Quorum:user1,user2,user3,user4
+new ? 
+groupName:Quorum||OtherGroupName:user1,user2
 */
 
 
@@ -70,6 +79,8 @@
  * command and his options. 
  */
 #define CMD_DIR	 "/var/lib/shamir/"
+#define EN_CMD_DIR "/var/lib/shamir/tmp/"
+#define EN_CMD_FILENAME_LEN 16 /* Bytes */
 
 #define MAX_LINE_LEN 256 /* Maximum line lenght for groups file*/
 #define MAX_USR_GRP  20  /* Maximum users per group */
@@ -578,18 +589,86 @@ static unsigned char
 	return random_buffer;
 }
 
+static char 
+*create_encrypted_file(EVP_PKEY *public_key, char *data, unsigned char *salt)
+{
+	FILE *fd;
+	int retval;
+	char *encrypted_file_name = NULL;
+	char *buffer, *encrypted_data = NULL;
+	unsigned char *seed;	
 
+	encrypted_file_name = calloc(strlen(EN_CMD_DIR) + EN_CMD_FILENAME_LEN + 1, sizeof(char));
+
+	if (encrypted_file_name == NULL)
+		return NULL;
+
+	if ((seed = alea(EN_CMD_FILENAME_LEN, (unsigned char *)CARAC)) == NULL)
+		return NULL;
+
+	strncpy(encrypted_file_name, EN_CMD_DIR, strlen(EN_CMD_DIR));
+	strncpy(encrypted_file_name+strlen(EN_CMD_DIR), (char *)seed, EN_CMD_FILENAME_LEN);
+
+	log_message(LOG_DEBUG, "(DEBUG) creating %s...", encrypted_file_name);
+
+	buffer = calloc(strlen((const char *)salt)+strlen(data)+1, sizeof(char));
+		
+	if (buffer == NULL)
+		return NULL;
+
+	strncpy(buffer, (char *)salt, strlen((const char *)salt));
+	strncpy(buffer+strlen((const char *)salt), data, strlen(data));
+
+	log_message(LOG_DEBUG, "(DEBUG) buffer is %s", buffer);
+
+	umask(0066);
+	if ((fd = fopen(encrypted_file_name, "w+")) == NULL)
+		return NULL;
+
+	RSA *rsa = RSA_new();
+
+	if ((rsa = EVP_PKEY_get1_RSA(public_key)) == NULL) {
+		log_message(LOG_ERR, "(ERROR) assign RSA public key");
+		RSA_free(rsa);
+		return NULL;
+	}
+
+	if ((encrypted_data = calloc(RSA_size(rsa), sizeof(unsigned char))) == NULL)
+		return NULL;	
+
+	if (RSA_size(rsa) - 41 < strlen(buffer)+1) { // cut + multiple encrypt. end: rewrite in 1 file
+		log_message(LOG_ERR, "(ERROR) data is too large");
+	}
+	
+	if ((retval = RSA_public_encrypt(strlen(buffer), (unsigned char *)buffer, (unsigned char *)encrypted_data, rsa, RSA_PKCS1_OAEP_PADDING)) == -1) {
+		log_message(LOG_ERR, "(ERROR) can not encrypt data");
+		RSA_free(rsa);
+		EVP_PKEY_free(public_key);
+		return NULL;
+	}
+
+	if (encrypted_data == NULL)
+		return NULL;
+	
+	fprintf(fd, "%s", encrypted_data);
+
+	fclose(fd);
+	free(seed);
+	free(buffer);
+	free(encrypted_data);
+	RSA_free(rsa);
+	rsa = NULL;
+	return encrypted_file_name;
+}
 
 static char
 *create_command_file(const struct pam_user *user) 
 {
 	char *file_name = calloc(FILENAME_MAX, sizeof(char));
-	//unsigned char salt[SALT_SIZE+1] = {'\0'}; 
 	unsigned char *salt;
-	int i, retval, quorum = 0;
+	int i, quorum = 0;
 	FILE *fd;
-	char *buffer = NULL, *formated_command = NULL;
-	unsigned char *encrypted_data = NULL;
+	char *formated_command = NULL, *encrypted_file;
 	EVP_PKEY *public_key = NULL;
 	
 	if (file_name == NULL)
@@ -602,11 +681,9 @@ static char
 		return NULL;
 	}
 	
-	log_message(LOG_DEBUG, "(TT) salt (%s)", salt);
+	/*log_message(LOG_DEBUG, "(TT) salt (%s)", salt);
 	for(i=0;i<SALT_SIZE+1;i++)
-		log_message(LOG_DEBUG, "(TT) __salt(%d) = [%c] - [0x%X] ",i,salt[i],salt[i]);
-
-
+		log_message(LOG_DEBUG, "(TT) __salt(%d) = [%c] - [0x%X] ",i,salt[i],salt[i]);*/
 	
 	if ((formated_command = format_command_line((const char **)command)) == NULL) {
 		log_message(LOG_ERR, "(ERROR) format the command line error");
@@ -618,14 +695,6 @@ static char
 	snprintf(file_name, FILENAME_MAX - 1, "%s%s-%s.%d", CMD_DIR, user->grp->name, user->name, getpid());
 	
 	log_message(LOG_DEBUG, "(DEBUG) creating %s file...", file_name);
-
-	if ((buffer = calloc(strlen(formated_command)+SALT_SIZE+1, sizeof(unsigned char))) == NULL)
-		return NULL;
-
-	strncpy(buffer, (char *)salt, SALT_SIZE);
-	strncpy(buffer+SALT_SIZE, formated_command, strlen(formated_command));		
-
-	log_message(LOG_DEBUG, "(TT) buffer is (%s)",buffer);
 
 	umask(0066);
 	if ((fd = fopen(file_name, "w+")) == NULL)
@@ -644,39 +713,18 @@ static char
 			continue; 
 		}
 		
-		RSA *rsa = RSA_new();
+		encrypted_file = create_encrypted_file(public_key, formated_command, salt);
 
-		if ((rsa = EVP_PKEY_get1_RSA(public_key)) == NULL) {
-			log_message(LOG_ERR, "(ERROR) assign RSA public key");
-			RSA_free(rsa);
-			return NULL;
+		if (encrypted_file == NULL) {
+			log_message(LOG_ERR, "(ERROR) can not create an encrypted file for user %s", user->grp->users[i]->name);
+			continue;
 		}
 
-		if ((encrypted_data = calloc(RSA_size(rsa), sizeof(unsigned char))) == NULL)
-			return NULL;	
-
-		if (RSA_size(rsa) - 41 < strlen(buffer)+1) { // cut + multiple encrypt. end: rewrite in 1 file
-			log_message(LOG_ERR, "(ERROR) data is too large");
-		}
-	
-		if ((retval = RSA_public_encrypt(strlen(buffer), (unsigned char *)buffer, (unsigned char *)encrypted_data, rsa, RSA_PKCS1_OAEP_PADDING)) == -1) {
-			log_message(LOG_ERR, "(ERROR) can not encrypt data");
-			RSA_free(rsa);
-			EVP_PKEY_free(public_key);
-			return NULL;
-		}
-
-		if (encrypted_data == NULL)
-			return NULL;
-	
-	//	frpintf(fd, "%s:%s:\n", user->grp->users[i]->name, encrypted_file);
-		fprintf(fd, "%s:%s:\n", user->grp->users[i]->name, encrypted_data); //user:/path/file_encrypt:/path/file_sign  random filename ?	
+		fprintf(fd, "%s:%s:\n", user->grp->users[i]->name, encrypted_file);
 
 		quorum++;
-
-		free(encrypted_data);
-		RSA_free(rsa);
-		rsa = NULL;
+		
+		free(encrypted_file);
 		EVP_PKEY_free(public_key);
 		public_key = NULL;
  	} 	
@@ -687,7 +735,6 @@ static char
 		return NULL;
 	}
 
-	free(buffer);
 	fclose(fd);
 	free(formated_command);
 	free(salt);
@@ -988,7 +1035,9 @@ int pam_sm_open_session(pam_handle_t *pamh, int flags, int argc, const char **ar
 
 	// listen (with sig ctrl+c + timeout) : (user, file_name) return SUCCESS, TIME_OUT, CANCELED, FAILED
 
-	//unlink(file_name); // no unlink for test		
+	// unlink tmp file befor !
+	//unlink(file_name); // no unlink for test	
+	
 	free(file_name);
 	return PAM_SUCCESS;
 }
