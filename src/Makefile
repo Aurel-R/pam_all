@@ -1,11 +1,17 @@
 all : pam_shamir.so
 
 
-pam_shamir.so : pam_shamir.o
-	gcc -shared -o pam_shamir.so pam_shamir.o -lpam -lcrypt -lcrypto -lssl
+pam_shamir.so : pam_shamir.o utils.o app.o
+	gcc -shared -o pam_shamir.so pam_shamir.o utils.o app.o -lpam -lcrypt -lcrypto -lssl
 
-pam_shamir.o : pam_shamir.c
+pam_shamir.o : pam_shamir.c config.h utils.h app.h 
 	gcc -fPIC -Wall -DDEBUG -c pam_shamir.c 
+
+app.o : app.c app.h config.h utils.h
+	gcc -fPIC -Wall -c app.c
+
+utils.o : utils.c utils.h 
+	gcc -fPIC -Wall -c utils.c
 
 clean : 
 	rm *.o
