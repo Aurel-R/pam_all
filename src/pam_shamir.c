@@ -4,16 +4,7 @@
 - new clean fct (for alloc, file, etc...)
 - ^ (maybe two in one ?) 
 - fct for parse files (groups)
-
-- many files + many fct...
-	auth_standard
-	auth_rsa
-	sess_shamir
-	passwd
-	utils
-
 - comments 
-- debug message (DEBUG) (ERROR) (WW) (INFO)
 
 - conf file, edit = ok, but others admins can't check the modifcations in file after validate :
 in session open, cp fic and open it
@@ -175,7 +166,7 @@ int pam_sm_chauthtok(pam_handle_t *pamh, int flags, int argc, const char **argv)
 PAM_EXTERN
 int pam_sm_open_session(pam_handle_t *pamh, int flags, int argc, const char **argv)
 {
-	int i=0;
+	int i=0, retval;
 	const struct pam_user *user;
 	char *file_name;	
 	
@@ -189,10 +180,9 @@ int pam_sm_open_session(pam_handle_t *pamh, int flags, int argc, const char **ar
 		return PAM_SYSTEM_ERR;
 	}
 
-	/* log_message(LOG_DEBUG, "__ADDR_OF_DATA __SESS user[0x%X] user->name[%s][0x%X]", user, user->name, &user->name); */
 	log_message(LOG_NOTICE, "session opened by %s in %s (member of %s)", user->name, user->tty, user->grp->name);
 
-	if (strcmp(command[0], "command=/bin/validate") == 0)
+	if (strcmp(command[0], "command=/usr/bin/validate") == 0)
 		return PAM_SUCCESS;
 	
 	log_message(LOG_NOTICE, "(INFO) starting request...");
@@ -203,12 +193,27 @@ int pam_sm_open_session(pam_handle_t *pamh, int flags, int argc, const char **ar
 		return PAM_SESSION_ERR;
 	}
 
-	// listen (with sig ctrl+c + timeout) : (user, file_name) return SUCCESS, TIME_OUT, CANCELED, FAILED
-
+	log_message(LOG_NOTICE, "(INFO) waiting for authorization...");
+	
+	retval = wait_reply(user, file_name);
+	
+	switch (retval) { 
+		case SUCCESS: break;
+		case REQUEST_TIME_OUT: log_message(LOG_NOTICE, "request timeout");/* display message */ break;
+		case CANCELED: break;
+		case FAILED: log_message(LOG_NOTICE, "command refused"); /* display message */ break;
+		default: log_message(LOG_ERR, "(ERROR) unknow returned value: %d", retval); /* display message */ break;
+	}	
+	
+	
 	// unlink tmp file befor !
-	//unlink(file_name); // no unlink for test	
+	//unlink(file_name); 	
 	
 	free(file_name);
+
+	if (retval != 0)
+		return PAM_SESSION_ERR;
+
 	return PAM_SUCCESS;
 }
 

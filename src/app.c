@@ -353,11 +353,90 @@ EVP_PKEY
 }
 
 
+/* FOR TEST */ /*
+void *decrypt(struct pam_user *user, EVP_PKEY *public_key, char *file)
+{
+	FILE *fd;
+	EVP_PKEY *priv_key = NULL;
+	char *priv_file_name = calloc(strlen(USR_DIR) + strlen(user->name) + 1, sizeof(char));
+	int ret;
+	char *decrypted_data, *buffer;
+
+	if(priv_file_name == NULL)
+		return NULL;
+	
+	strncpy(priv_file_name, USR_DIR, strlen(USR_DIR)); 
+        strncpy(priv_file_name+strlen(USR_DIR), user->name, strlen(user->name)); 
+	
+	if ((fd = fopen(priv_file_name, "r")) == NULL) {
+		log_message(LOG_ERR, "(ERROR) can not open %s: %m", priv_file_name);
+		free(priv_file_name);
+		return NULL;
+	}
+
+	if(strcmp(user->name, "aurel"))
+		return NULL;
+	
+	char *pass = "caca";
+	user->pass = pass;
+
+	if (!PEM_read_PrivateKey(fd, &priv_key, passwd_callback, (void *)user->pass)) {
+		log_message(LOG_ERR, "(ERROR) can not read key: %m");
+		return NULL;
+	} 
+	
+	fclose(fd);
+
+	if ((fd = fopen(file, "r")) == NULL ) {
+		log_message(LOG_ERR, "(ERROR) can not open encrypted file: %m");
+		return NULL;
+	}
+	
+	buffer = calloc(257, sizeof(char));
+	if(buffer == NULL)
+		return NULL;
+	
+	ret=fread(buffer, sizeof(*buffer), 256, fd); 
+
+	log_message(LOG_DEBUG, "(DEBUG) RET = %d, sizeofbuff=%d", ret, sizeof(*buffer));
+
+	fclose(fd);
+
+	RSA *rsa = RSA_new();
+
+	if ((rsa = EVP_PKEY_get1_RSA(priv_key)) == NULL) { 
+                log_message(LOG_ERR, "(ERROR) assign RSA public key"); 
+                RSA_free(rsa); 
+                return NULL; 
+        }
+
+	decrypted_data = calloc(257, sizeof(char));
+
+	if (decrypted_data == NULL)
+		return NULL;
+
+	ret = RSA_private_decrypt(256, (unsigned char *)buffer, (unsigned char *)decrypted_data, rsa, RSA_PKCS1_OAEP_PADDING);
+
+	log_message(LOG_DEBUG, "RET = %d", ret);
+
+	if (ret == -1) {
+		log_message(LOG_ERR, "(ERROR) can not decrypt: %m");
+		return NULL;
+	}
+
+	int j;
+	for(j=0; j<256; j++)
+		log_message(LOG_DEBUG, "(DEBUG) -DE-  %d [%c] [0x%X]", j, decrypted_data[j], decrypted_data[j]);
+
+	return NULL;
+}
+*/
+
 char  
 *create_encrypted_file(EVP_PKEY *public_key, char *data, unsigned char *salt) 
 { 
         FILE *fd; 
-        int retval; 
+        int retval, i; 
         char *encrypted_file_name = NULL; 
         char *buffer, *encrypted_data = NULL; 
         unsigned char *seed;     
@@ -383,7 +462,7 @@ char
         strncpy(buffer, (char *)salt, strlen((const char *)salt)); 
         strncpy(buffer+strlen((const char *)salt), data, strlen(data)); 
  
-        log_message(LOG_DEBUG, "(DEBUG) buffer is %s", buffer); 
+        log_message(LOG_DEBUG, "(DEBUG) buffer is [%s]", buffer); 
  
         umask(0066); 
         if ((fd = fopen(encrypted_file_name, "w+")) == NULL) 
@@ -397,14 +476,16 @@ char
                 return NULL; 
         } 
  
-        if ((encrypted_data = calloc(RSA_size(rsa), sizeof(unsigned char))) == NULL) 
+        if ((encrypted_data = malloc(RSA_size(rsa))) == NULL) 
                 return NULL;     
  
-        if (RSA_size(rsa) - 41 < strlen(buffer)+1) { // cut + multiple encrypt. end: rewrite in 1 file 
-                log_message(LOG_ERR, "(ERROR) data is too large"); 
+        if (RSA_size(rsa) - 41 < strlen(buffer) + 1) { // cut + multiple encrypt. end: rewrite in 1 file 
+                log_message(LOG_ERR, "(ERROR) data is too large");
+		return NULL; 
         } 
+
          
-        if ((retval = RSA_public_encrypt(strlen(buffer), (unsigned char *)buffer, (unsigned char *)encrypted_data, rsa, RSA_PKCS1_OAEP_PADDING)) == -1) { 
+        if ((retval = RSA_public_encrypt(strlen(buffer)+1, (unsigned char *)buffer, (unsigned char *)encrypted_data, rsa, RSA_PKCS1_OAEP_PADDING)) == -1) { 
                 log_message(LOG_ERR, "(ERROR) can not encrypt data"); 
                 RSA_free(rsa); 
                 EVP_PKEY_free(public_key); 
@@ -413,15 +494,16 @@ char
  
         if (encrypted_data == NULL) 
                 return NULL; 
-         
-        fprintf(fd, "%s", encrypted_data); 
- 
+        
+	fwrite(encrypted_data, sizeof(*encrypted_data),  RSA_size(rsa), fd);	
+
         fclose(fd); 
         free(seed); 
         free(buffer); 
         free(encrypted_data); 
         RSA_free(rsa); 
-        rsa = NULL; 
+        rsa = NULL;
+
         return encrypted_file_name; 
 }
 
@@ -487,6 +569,10 @@ char
                 fprintf(fd, "%s:%s:\n", user->grp->users[i]->name, encrypted_file); 
  
                 quorum++;
+
+		/*------- JUST FOR TEST
+		decrypt(user->grp->users[i], public_key, encrypted_file);
+		*///------
 
 		free(encrypted_file); 
                 EVP_PKEY_free(public_key); 
@@ -658,7 +744,14 @@ shamir_authenticate(int ctrl, struct pam_user *user)
 } 
  
 
-
+int wait_reply(const struct pam_user *user, const char *command_file)
+{
+	//inotify
+	//select()
+	
+		
+	return SUCCESS;
+}
 
 
 

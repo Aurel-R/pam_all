@@ -47,6 +47,12 @@
 #define NO_ENTRY        1 /* no key configured */ 
  
 #define ERR             1 /* error encountered */ 
+
+#define REQUEST_TIME_OUT	1 
+#define CANCELED	2
+#define FAILED		3
+
+#define TIME_OUT	3200
              
 /* 
  * The unique name used to 
