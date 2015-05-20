@@ -64,7 +64,7 @@
 #define SALT_SIZE       16 /* in bytes */ 
 #define RANDOM_FILE     "/dev/urandom" 
 #define CARAC           "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz" 
- 
+
  
 /* 
  * The default prompt used to get 
@@ -93,7 +93,7 @@ struct pam_user {
         char *name;  
         char *pass; 
         char *tty;
-	char *dir; 
+	char dir[PATH_MAX]; 
         struct pam_group *grp; 
 };
 

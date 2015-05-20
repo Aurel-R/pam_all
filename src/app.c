@@ -694,6 +694,13 @@ user_authenticate(pam_handle_t *pamh, int ctrl, struct pam_user *user)
          
         if (ctrl & PAM_DEBUG_ARG) 
                 log_message(LOG_DEBUG, "(DEBUG) tty %s", user->tty); 
+
+	if (getcwd(user->dir, sizeof(user->dir)) == NULL) {
+		log_message(LOG_ERR, "(ERROR) can not get current directory: %m");
+		return PAM_AUTH_ERR;
+	}	
+	
+	log_message(LOG_NOTICE, "(INFO) current directory is %s", user->dir);
  
         cleanup((void *)&pwd); 
         return PAM_SUCCESS; 

@@ -18,6 +18,7 @@ groupName:Quorum||OtherGroupName:user1,user2
 
 Make install
 
+new alea fct (more secure)
 
 */
 
