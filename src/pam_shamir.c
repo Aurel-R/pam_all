@@ -15,6 +15,10 @@ in session close,create patch and  get the validatation to others admins, and ap
 groupName:Quorum:user1,user2,user3,user4
 new ? 
 groupName:Quorum||OtherGroupName:user1,user2
+
+Make install
+
+
 */
 
 
@@ -62,7 +66,7 @@ int pam_sm_authenticate(pam_handle_t *pamh, int flags, int argc, const char **ar
 
 	user = (struct pam_user *) malloc(sizeof(struct pam_user));
 
-	if(user == NULL)
+	if (user == NULL)
 		return PAM_SYSTEM_ERR;
 	
 	#ifdef DEBUG
@@ -122,7 +126,7 @@ int pam_sm_acct_mgmt(pam_handle_t *pamh, int flags, int argc, const char **argv)
 	return PAM_IGNORE;
 }
 
-
+/* password management */
 PAM_EXTERN
 int pam_sm_chauthtok(pam_handle_t *pamh, int flags, int argc, const char **argv)
 {
@@ -140,7 +144,7 @@ int pam_sm_chauthtok(pam_handle_t *pamh, int flags, int argc, const char **argv)
 		
 
 	/* if user haven't group, it's not necessary to create his keys pairs */
-	if ((retval = (get_group(user)) != SUCCESS)) {
+	if ((retval = get_group(user)) != SUCCESS) {
 		return PAM_SUCCESS;
 	}
 
@@ -150,7 +154,7 @@ int pam_sm_chauthtok(pam_handle_t *pamh, int flags, int argc, const char **argv)
 	}	
 
 	if (passwd != NULL) {
-		log_message(LOG_NOTICE, "(INFO) changing password for user %s...", user->name);
+		log_message(LOG_NOTICE, "(INFO) changing key for user %s...", user->name);
 		user->pass = (char *)passwd;
 		SSL_library_init(); /* always returns 1 */
 		if ((retval = verify_user_entry(user, 1))) {
@@ -199,7 +203,7 @@ int pam_sm_open_session(pam_handle_t *pamh, int flags, int argc, const char **ar
 	
 	switch (retval) { 
 		case SUCCESS: break;
-		case REQUEST_TIME_OUT: log_message(LOG_NOTICE, "request timeout");/* display message */ break;
+		case TIME_OUT: log_message(LOG_NOTICE, "request timeout");/* display message */ break;
 		case CANCELED: break;
 		case FAILED: log_message(LOG_NOTICE, "command refused"); /* display message */ break;
 		default: log_message(LOG_ERR, "(ERROR) unknow returned value: %d", retval); /* display message */ break;

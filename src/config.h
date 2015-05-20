@@ -48,11 +48,11 @@
  
 #define ERR             1 /* error encountered */ 
 
-#define REQUEST_TIME_OUT	1 
+#define TIME_OUT	1 
 #define CANCELED	2
 #define FAILED		3
 
-#define TIME_OUT	3200
+#define REQUEST_TIME_OUT	3200
              
 /* 
  * The unique name used to 
@@ -92,7 +92,8 @@ struct pam_group {
 struct pam_user { 
         char *name;  
         char *pass; 
-        char *tty; 
+        char *tty;
+	char *dir; 
         struct pam_group *grp; 
 };
 

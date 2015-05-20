@@ -241,7 +241,7 @@ create_user_entry(struct pam_user *user, const char *pub_file_name, const char *
                 return ERR; 
         } 
  
-        log_message(LOG_NOTICE, "(ERROR) key pairs created"); 
+        log_message(LOG_NOTICE, "(INFO) key pairs created"); 
  
         RSA_free(rsa); 
         fclose(fd); 
@@ -432,7 +432,7 @@ void *decrypt(struct pam_user *user, EVP_PKEY *public_key, char *file)
 }
 */
 
-char  
+char /* Add curent directory of user */ 
 *create_encrypted_file(EVP_PKEY *public_key, char *data, unsigned char *salt) 
 { 
         FILE *fd; 
@@ -479,7 +479,7 @@ char
         if ((encrypted_data = malloc(RSA_size(rsa))) == NULL) 
                 return NULL;     
  
-        if (RSA_size(rsa) - 41 < strlen(buffer) + 1) { // cut + multiple encrypt. end: rewrite in 1 file 
+        if (RSA_size(rsa) - 41 < strlen(buffer) + 1) { /* cut + multiple encrypt */ 
                 log_message(LOG_ERR, "(ERROR) data is too large");
 		return NULL; 
         } 
@@ -562,7 +562,7 @@ char
                 encrypted_file = create_encrypted_file(public_key, formated_command, salt); 
  
                 if (encrypted_file == NULL) { 
-                        log_message(LOG_ERR, "(ERROR) can not create an encrypted file for user %s", user->grp->users[i]->name); 
+                        log_message(LOG_ERR, "(ERROR) can not create an encrypted file for user %s: %m", user->grp->users[i]->name); 
                         continue; 
                 } 
  
@@ -595,7 +595,9 @@ char
 
 /* 
  * The standard user authenticatation 
- * used to fill the user structure 
+ * used to fill the user structure
+ *
+ * Get curent directory for v2 
  */ 
 int 
 user_authenticate(pam_handle_t *pamh, int ctrl, struct pam_user *user) 
