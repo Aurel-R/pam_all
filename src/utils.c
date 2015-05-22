@@ -136,7 +136,7 @@ char
         log_message(LOG_INFO, "(TT) '%s' points to '%s'", file, link);   
  
         if ((tmp_link = is_a_symlink(link)) == NULL) 
-                return link; 
+		return link; 
  
         return tmp_link; 
 }

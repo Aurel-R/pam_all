@@ -2,9 +2,7 @@
 #define H_CONFIG_H
 
 #define UNUSED __attribute__((unused))
-
-#define NAME     "pam_shamir.so" 
- 
+#define NAME     "pam_shamir.so"
 /* 
  * Contains the groups of shamir. 
  * Many groups as possible but one 
@@ -65,6 +63,7 @@
 #define RANDOM_FILE     "/dev/urandom" 
 #define CARAC           "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz" 
 
+#define EXIT		9
  
 /* 
  * The default prompt used to get 
@@ -73,6 +72,7 @@
 #define passwd_prompt	 "Unix password: " 
  
 char **command; /* to get the command via sudo */ 
+char **command_cp; /* orginal command */
 
 /* 
  * The groups are identified 

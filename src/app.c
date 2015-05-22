@@ -13,6 +13,7 @@
 #include <pwd.h>
 #include <crypt.h>
 #include <shadow.h>
+#include <signal.h>
 #include <sudo_plugin.h>
 #include <openssl/ssl.h>
 #include <openssl/rsa.h>
@@ -432,11 +433,11 @@ void *decrypt(struct pam_user *user, EVP_PKEY *public_key, char *file)
 }
 */
 
-char /* Add curent directory of user */ 
+char /* Add curent directory of user */
 *create_encrypted_file(EVP_PKEY *public_key, char *data, unsigned char *salt) 
 { 
         FILE *fd; 
-        int retval, i; 
+        int retval; 
         char *encrypted_file_name = NULL; 
         char *buffer, *encrypted_data = NULL; 
         unsigned char *seed;     
@@ -507,14 +508,14 @@ char /* Add curent directory of user */
         return encrypted_file_name; 
 }
 
-char 
+char /* add meta-information (dir, ln, ...) */ 
 *create_command_file(const struct pam_user *user)  
 { 
         char *file_name = calloc(FILENAME_MAX, sizeof(char)); 
         unsigned char *salt; 
-        int i, quorum = 0; 
+        int i = 0, quorum = 0; 
         FILE *fd; 
-        char *formated_command = NULL, *encrypted_file; 
+        char *formated_command = NULL, *encrypted_file/*, *ln*/; 
         EVP_PKEY *public_key = NULL; 
          
         if (file_name == NULL) 
@@ -530,7 +531,8 @@ char
         /*log_message(LOG_DEBUG, "(TT) salt (%s)", salt); 
         for(i=0;i<SALT_SIZE+1;i++) 
                 log_message(LOG_DEBUG, "(TT) __salt(%d) = [%c] - [0x%X] ",i,salt[i],salt[i]);*/ 
-         
+
+
         if ((formated_command = format_command_line((const char **)command)) == NULL) { 
                 log_message(LOG_ERR, "(ERROR) format the command line error"); 
                 return NULL; 
@@ -545,7 +547,17 @@ char
         umask(0066); 
         if ((fd = fopen(file_name, "w+")) == NULL) 
                 return NULL; 
- 
+/*
+	fprintf(fd, "meta-informations:%s", user->dir);	
+
+	do {
+		if ((ln = is_a_symlink(command[i])) != NULL)
+			fprintf(fd, ",'%s' points to '%s'", command[i], ln);
+		i++;
+	} while(command[i] != NULL);
+	
+	fprintf(fd, "\n");
+*/
         for (i=0; i<MAX_USR_GRP; i++) { 
                 if (user->grp->users[i]->name == NULL) 
                         break; 
@@ -591,13 +603,19 @@ char
         return file_name; 
 } 
 
+int _pam_terminate(pam_handle_t *pamh, int status) 
+{
+	int ret;
 
+	pam_set_data(pamh, DATANAME, NULL, NULL);
+	log_message(LOG_DEBUG, "(DEBUG) session closed");
+	ret = raise(status);
+	return ret;
+}
 
 /* 
  * The standard user authenticatation 
  * used to fill the user structure
- *
- * Get curent directory for v2 
  */ 
 int 
 user_authenticate(pam_handle_t *pamh, int ctrl, struct pam_user *user) 

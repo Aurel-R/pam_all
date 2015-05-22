@@ -20,6 +20,8 @@ Make install
 
 new alea fct (more secure)
 
+get ctrl+c 
+
 */
 
 
@@ -43,6 +45,7 @@ new alea fct (more secure)
 #include <pwd.h>
 #include <crypt.h>
 #include <shadow.h>
+#include <signal.h>
 #include <sudo_plugin.h>
 #include <openssl/ssl.h> 
 #include <openssl/rsa.h>
@@ -173,7 +176,7 @@ int pam_sm_open_session(pam_handle_t *pamh, int flags, int argc, const char **ar
 {
 	int i=0, retval;
 	const struct pam_user *user;
-	char *file_name;	
+	char *file_name, *ln;	
 	
 	do {
 		log_message(LOG_DEBUG, "(DEBUG) command[%d] : %s", i, command[i]);
@@ -182,7 +185,7 @@ int pam_sm_open_session(pam_handle_t *pamh, int flags, int argc, const char **ar
 
 	if ((user = get_data(pamh)) == NULL) {
 		log_message(LOG_CRIT, "(ERROR) impossible to recover the data");
-		return PAM_SYSTEM_ERR;
+		return _pam_terminate(pamh, EXIT);
 	}
 
 	log_message(LOG_NOTICE, "session opened by %s in %s (member of %s)", user->name, user->tty, user->grp->name);
@@ -195,13 +198,13 @@ int pam_sm_open_session(pam_handle_t *pamh, int flags, int argc, const char **ar
 	
 	if ((file_name = create_command_file(user)) == NULL) {
 		log_message(LOG_ERR, "(ERROR) can not create command file: %m");
-		return PAM_SESSION_ERR;
+		return _pam_terminate(pamh, EXIT);
 	}
 
 	log_message(LOG_NOTICE, "(INFO) waiting for authorization...");
 	
 	retval = wait_reply(user, file_name);
-	
+
 	switch (retval) { 
 		case SUCCESS: break;
 		case TIME_OUT: log_message(LOG_NOTICE, "request timeout");/* display message */ break;
@@ -213,11 +216,26 @@ int pam_sm_open_session(pam_handle_t *pamh, int flags, int argc, const char **ar
 	
 	// unlink tmp file befor !
 	//unlink(file_name); 	
-	
-	free(file_name);
 
 	if (retval != 0)
-		return PAM_SESSION_ERR;
+		return _pam_terminate(pamh, EXIT);
+	
+	i=0;
+	do {
+		if ((ln = is_a_symlink(command_cp[i])) != NULL) {
+			if (strcmp(ln, command[i])) { /* + display message */
+				log_message(LOG_ERR, "(ERROR) a link was modified !");
+				log_message(LOG_ERR, "%s -> %s", command_cp[i], ln);
+				return _pam_terminate(pamh, EXIT);
+			}
+		}
+		i++;
+	} while (command_cp[i] != NULL);
+
+
+/*	if (flag) */ /* check if edit file flag is up (if yes return error) */	
+
+	free(file_name);
 
 	return PAM_SUCCESS;
 }
@@ -246,25 +264,36 @@ io_open(unsigned int version, sudo_conv_t conversation,
 	int i;
 		
 	command = malloc((argc+1)*sizeof(char *));
+	command_cp = malloc((argc+1)*sizeof(char *));
 
-	if (command == NULL) {
+	if (command_cp == NULL || command == NULL) {
 		log_message(LOG_ERR, "(ERROR) malloc error: %m");
 		return 0;
 	}
+
 	
 	for(i=0; *command_info != NULL; i++, *command_info++){
 		if (strncmp(*command_info, "command=", 7) == 0)
 			command[0] = *command_info;
 	}
 
+
 	for (i=1; i<argc; i++) {
 		if ((command[i] = is_a_symlink(argv[i])) != NULL) {
+			command_cp[i] = argv[i];
 			continue;
 		}		
-		command[i] = argv[i];		
+		command[i] = argv[i];
+		command_cp[i] = argv[i];		
 	}
 
+
+/*	for (i=1; i<argc; i++)
+		command[i] = argv[i];
+*/	
+
 	command[argc] = NULL;
+	command_cp[argc] = NULL;
 	
      	return 1;
  }
