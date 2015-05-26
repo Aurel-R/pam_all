@@ -27,9 +27,10 @@
  
 #define MAX_LINE_LEN 256 /* Maximum line lenght for groups file*/ 
 #define MAX_USR_GRP  20  /* Maximum users per group */ 
- 
+#define LINE_LEN     512 
+
 #define PAM_DEBUG_ARG       0x0001 
-#define PAM_USE_FPASS_ARG   0x0040   
+#define PAM_USE_FPASS_ARG   0x0040 /* !! add try_first_pass !! */   
  
 /* 
  * NO_CONF and BAD_CONF return success.  
@@ -50,7 +51,9 @@
 #define CANCELED	2
 #define FAILED		3
 
-#define REQUEST_TIME_OUT	3200
+#define REQUEST_TIME_OUT	120 /*3200*/
+
+#define ALL_FILE_PARSE	2
              
 /* 
  * The unique name used to 
@@ -63,7 +66,7 @@
 #define RANDOM_FILE     "/dev/urandom" 
 #define CARAC           "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz" 
 
-#define EXIT		9
+#define EXIT		9	
  
 /* 
  * The default prompt used to get 

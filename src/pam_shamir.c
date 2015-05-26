@@ -3,25 +3,31 @@
 - rewrite cleanup
 - new clean fct (for alloc, file, etc...)
 - ^ (maybe two in one ?) 
-- fct for parse files (groups)
+- fct for parse files (groups) ! REWRITE !
 - comments 
 
 - conf file, edit = ok, but others admins can't check the modifcations in file after validate :
 in session open, cp fic and open it
 in session close,create patch and  get the validatation to others admins, and appli patch if ok
 
-
 -Actual group :
 groupName:Quorum:user1,user2,user3,user4
 new ? 
 groupName:Quorum||OtherGroupName:user1,user2
 
-Make install
-
-new alea fct (more secure)
-
-get ctrl+c 
-
+- fct free : #var a,b,c, ...
+- quorum + 1
+- aes 
+- display message
+- debug message
+- memcheck
+- bigger encrypt size (for add directory and other)
+- Make install
+- new alea fct (more secure)
+- get ctrl+c + othersig (sigterm stps etc... for no execute the command) 
+- get OLDAUTHTOK (for compatibility)
+- static lib
+- not declar fct in header if it used only in c file
 */
 
 
@@ -177,6 +183,11 @@ int pam_sm_open_session(pam_handle_t *pamh, int flags, int argc, const char **ar
 	int i=0, retval;
 	const struct pam_user *user;
 	char *file_name, *ln;	
+
+	if (command == NULL || command_cp == NULL) {		
+		log_message(LOG_ERR, "(ERROR), can not get the command");
+		return _pam_terminate(pamh, EXIT);
+	} 
 	
 	do {
 		log_message(LOG_DEBUG, "(DEBUG) command[%d] : %s", i, command[i]);
@@ -190,7 +201,7 @@ int pam_sm_open_session(pam_handle_t *pamh, int flags, int argc, const char **ar
 
 	log_message(LOG_NOTICE, "session opened by %s in %s (member of %s)", user->name, user->tty, user->grp->name);
 
-	if (strcmp(command[0], "command=/usr/bin/validate") == 0)
+	if (strncmp(command[0], "command=/usr/bin/validate", 25) == 0)
 		return PAM_SUCCESS;
 	
 	log_message(LOG_NOTICE, "(INFO) starting request...");
@@ -210,7 +221,7 @@ int pam_sm_open_session(pam_handle_t *pamh, int flags, int argc, const char **ar
 		case TIME_OUT: log_message(LOG_NOTICE, "request timeout");/* display message */ break;
 		case CANCELED: break;
 		case FAILED: log_message(LOG_NOTICE, "command refused"); /* display message */ break;
-		default: log_message(LOG_ERR, "(ERROR) unknow returned value: %d", retval); /* display message */ break;
+		default: log_message(LOG_ERR, "(ERROR) an internal error occurred: (%d) %m", retval); /* display message */ break;
 	}	
 	
 	
@@ -236,7 +247,6 @@ int pam_sm_open_session(pam_handle_t *pamh, int flags, int argc, const char **ar
 /*	if (flag) */ /* check if edit file flag is up (if yes return error) */	
 
 	free(file_name);
-
 	return PAM_SUCCESS;
 }
 
@@ -249,6 +259,8 @@ int pam_sm_close_session(pam_handle_t *pamh, int flags, int argc, const char **a
 
 	log_message(LOG_DEBUG, "(DEBUG) session closed");
 	
+	free(command);
+	free(command_cp);
 	return PAM_SUCCESS;
 }
 
@@ -262,7 +274,7 @@ io_open(unsigned int version, sudo_conv_t conversation,
 {
 	log_message(LOG_DEBUG, "(DEBUG) io_open");
 	int i;
-		
+
 	command = malloc((argc+1)*sizeof(char *));
 	command_cp = malloc((argc+1)*sizeof(char *));
 
