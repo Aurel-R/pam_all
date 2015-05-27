@@ -523,7 +523,7 @@ char /* add meta-information (dir, ln, ...) */
 { 
         char *file_name = calloc(FILENAME_MAX, sizeof(char)); 
         unsigned char *salt; 
-        int i = 0, quorum = 0; 
+        int i = 0, quorum = 1; 
         FILE *fd; 
         char *formated_command = NULL, *encrypted_file/*, *ln*/; 
         EVP_PKEY *public_key = NULL; 
@@ -594,7 +594,7 @@ char /* add meta-information (dir, ln, ...) */
 
 		/*------- JUST FOR TEST
 		decrypt(user->grp->users[i], public_key, encrypted_file);
-		*///------
+		------*/
 
 		free(encrypted_file); 
                 EVP_PKEY_free(public_key); 
@@ -807,13 +807,13 @@ int get_signed_file(struct pam_user *user, char **file, const char *command_file
 	rewind(fd);
 	
 	while (fgets(line, LINE_LEN - 1, fd) != NULL) {
-		log_message(LOG_DEBUG, "-DE- line_flag = %d", line_flag[i]);
 		if (!line_flag[i]) {
 			token = strtok(line, ":");
 			user->name = calloc(strlen(token) + 1, sizeof(char));
 			
 			if (user->name == NULL)
 				return ERR;
+
 			strncpy(user->name, token, strlen(token));
 
 			if (user->name == NULL) {
@@ -827,15 +827,16 @@ int get_signed_file(struct pam_user *user, char **file, const char *command_file
 			token = strtok(NULL, ":"); /* second twice */
 
 			if (token != NULL) {
-				if (token[0] != '\n') {
+				if (token[0] != '\n' && token[0] != '\0') {
 					*file = calloc(strlen(EN_CMD_DIR)+strlen(token)+1, sizeof(char));
 					
 					if (*file == NULL)
 						return ERR;
-					log_message(LOG_DEBUG, "-DE-  token=%s", token);
+
 					strncpy(*file, EN_CMD_DIR, strlen(EN_CMD_DIR));
 					strncpy(*file+strlen(EN_CMD_DIR), token, strlen(token));
-					log_message(LOG_DEBUG, "-DE- file=%s", *file);
+					*(*file + strlen(*file) - 1) = '\0';
+
 					line_flag[i] = 1;
 					break;
 				}
@@ -927,11 +928,11 @@ int wait_reply(const struct pam_user *user, const char *command_file)
              __attribute__ ((aligned(__alignof__(struct inotify_event))));
         struct inotify_event *event;
 
-	struct pam_user *user_n;
-	char *encrypted_file = NULL;
+	struct pam_user *user_n = NULL; /* REALLOC ! */
+	char *encrypted_file = NULL; /* REALLOC ! */
 	EVP_PKEY *public_key;
 	char *decrypted_data;
-	int status, flag = 0, quorum = 0;
+	int status, flag = 0, quorum = 1;
 
 	if ((user_n = malloc(sizeof(struct pam_user))) == NULL)
 		return ERR;
@@ -970,29 +971,39 @@ int wait_reply(const struct pam_user *user, const char *command_file)
 
 				switch (status) {
 					case SUCCESS: break;
-					case ALL_FILE_PARSE: flag = 1; break; 
+					case ALL_FILE_PARSE: 
+							    log_message(LOG_DEBUG, "(DEBUG) all the file is pared");
+							    flag = 1; break; 
 					default: return status; 
 				}			
+
+				if (user_n == NULL || encrypted_file == NULL)
+					return ERR;
 							
-				if (flag)
-					break;
+				log_message(LOG_DEBUG, "(DEBUG) getting validation from %s - (%s)", user_n->name, encrypted_file);
 
 				if ((public_key = get_public_key(user_n)) == NULL) {
 					log_message(LOG_ALERT, "(WW) impossible to get the public key for %s", user_n->name);
+					if (flag) break;
 					continue; /* if user haven't keys */
 				}
 
 				if ((decrypted_data = decrypt_file(public_key, encrypted_file)) == NULL) {
 					log_message(LOG_ERR, "(ERROR) impossible to decrypt file for %s", user_n->name);
+					if (flag) break;
 					continue; 
 				}
 
 				if (strncmp(decrypted_data, data_buf, strlen(data_buf))) {
 					log_message(LOG_ALERT, "(WW) data are false");
+					if (flag) break;
 					continue;
 				} 
 
 				quorum++;
+
+				if (flag)
+					break;
 			}
 
 		} else return TIME_OUT;

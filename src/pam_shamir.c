@@ -15,19 +15,18 @@ groupName:Quorum:user1,user2,user3,user4
 new ? 
 groupName:Quorum||OtherGroupName:user1,user2
 
-- fct free : #var a,b,c, ...
-- quorum + 1
-- aes 
-- display message
-- debug message
-- memcheck
-- bigger encrypt size (for add directory and other)
-- Make install
-- new alea fct (more secure)
-- get ctrl+c + othersig (sigterm stps etc... for no execute the command) 
-- get OLDAUTHTOK (for compatibility)
-- static lib
-- not declar fct in header if it used only in c file
+   - fct free : #var a,b,c, ...
+OK - quorum + 1
+   - display message
+   - debug message
+   - memcheck
+   - bigger encrypt size (for add directory and other) (AES + RSA)
+   - Make install
+   - new alea fct (more secure) with ssl
+   - get ctrl+c + othersig (sigterm stps etc... for no execute the command) 
+   - get OLDAUTHTOK (for compatibility)
+   - static lib
+   - not set fct in header if it used only in c file
 */
 
 
