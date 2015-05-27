@@ -29,6 +29,7 @@ _pam_parse(int argc, const char **argv)
 }
 
 
+/* Send log to syslog */
 void
 log_message(int level, char *msg, ...)
 {
@@ -58,6 +59,7 @@ cleanup(void **data)
         }
 }
 
+/* for private key */
 int 
 passwd_callback(char *pcszBuff, int size, int rwflag, void *pPass) 
 { 

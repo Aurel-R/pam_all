@@ -84,12 +84,3 @@ Info: add an user in sudo grp ->  usermod -a -G sudo UserName
 
 
 
-
---- testing module ---
-	1. try a command with sudo
-	2. get the last lines in your /var/log/auth.log
-	3. If you see a line like that, you win ! 
-		pam_shamir.so[9482]: debug: the module called via pam_sm_authenticate function
-	4. else, contact the developper
-
-

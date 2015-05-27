@@ -3,6 +3,7 @@
 
 #define UNUSED __attribute__((unused))
 #define NAME     "pam_shamir.so"
+
 /* 
  * Contains the groups of shamir. 
  * Many groups as possible but one 
@@ -23,21 +24,22 @@
  */ 
 #define CMD_DIR  "/var/lib/shamir/" 
 #define EN_CMD_DIR "/var/lib/shamir/tmp/" 
-#define EN_CMD_FILENAME_LEN 16 /* Bytes */ 
+#define EN_CMD_FILENAME_LEN 16 /* in bytes */ 
  
-#define MAX_LINE_LEN 256 /* Maximum line lenght for groups file*/ 
+#define MAX_LINE_LEN 256 /* Maximum line lenght for groups file */ 
 #define MAX_USR_GRP  20  /* Maximum users per group */ 
-#define LINE_LEN     512 
+#define LINE_LEN     512 /* Maximum line lenght for command file */
 
-#define PAM_DEBUG_ARG       0x0001 
-#define PAM_USE_FPASS_ARG   0x0040 /* !! add try_first_pass !! */   
+#define PAM_DEBUG_ARG       0x0001 /* debug mod  */
+#define PAM_USE_FPASS_ARG   0x0040 /* used for use the first password save in PAM */
+/* !! add try_first_pass too !! */   
  
 /* 
  * NO_CONF and BAD_CONF return success.  
  * it's necessary for the first configuration  
  * and for not block the system. 
  */ 
-#define SUCCESS         0 /* user have a group */ 
+#define SUCCESS         0  
 #define NO_USR_GRP      1 /* the user haven't group (authentication failed) */ 
 #define NO_CONF         2 /* the group file is not configured (authentication success) */ 
 #define BAD_CONF        3 /* bad configuration for group file (authentication success) */ 
@@ -47,13 +49,13 @@
  
 #define ERR             1 /* error encountered */ 
 
-#define TIME_OUT	1 
-#define CANCELED	2
-#define FAILED		3
+#define TIME_OUT	1 /* when the user is waiting validation */ 
+#define CANCELED	2 /* CTRL+C */
+#define FAILED		3 /* the command was refused */
 
-#define REQUEST_TIME_OUT	120 /*3200*/
+#define REQUEST_TIME_OUT	120 /* 3200 */ /* in second */
 
-#define ALL_FILE_PARSE	2
+#define ALL_FILE_PARSE	2 /* returned when all lines of command file was parsed */
              
 /* 
  * The unique name used to 
@@ -61,9 +63,9 @@
  */ 
 #define DATANAME "current_user" 
  
-#define BITS            2048 
+#define BITS            2048 /* for RSA key */ 
 #define SALT_SIZE       16 /* in bytes */ 
-#define RANDOM_FILE     "/dev/urandom" 
+#define RANDOM_FILE     "/dev/urandom" /* file used for random data */ 
 #define CARAC           "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz" 
 
 #define EXIT		9	
@@ -75,7 +77,7 @@
 #define passwd_prompt	 "Unix password: " 
  
 char **command; /* to get the command via sudo */ 
-char **command_cp; /* orginal command */
+char **command_cp; /* orginal command before formatted */
 
 /* 
  * The groups are identified 
@@ -83,9 +85,9 @@ char **command_cp; /* orginal command */
  * to a list of users 
  */ 
 struct pam_group { 
-        char *name; 
-        int quorum; 
-        struct pam_user *users[MAX_USR_GRP]; 
+        char *name; /* name of group */
+        int quorum; /* his quorum */
+        struct pam_user *users[MAX_USR_GRP]; /* users registred in the group */
 }; 
  
 /* 
@@ -93,11 +95,11 @@ struct pam_group {
  * group (for this moment) 
  */ 
 struct pam_user { 
-        char *name;  
-        char *pass; 
-        char *tty;
-	char dir[PATH_MAX]; 
-        struct pam_group *grp; 
+        char *name;  /* name of user */
+        char *pass; /* his password (in clear) */
+        char *tty; /* his tty */
+	char dir[PATH_MAX]; /* his current worked directory */
+        struct pam_group *grp; /* his group */
 };
 
 

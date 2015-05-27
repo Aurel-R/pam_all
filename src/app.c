@@ -166,7 +166,7 @@ EVP_PKEY *create_rsa_key(RSA *rsa)
         int ret; 
  
         if (rsa && key && EVP_PKEY_assign_RSA(key, rsa)) { 
-                ret = RSA_check_key(rsa); 
+                ret = RSA_check_key(rsa); /* check key */ 
  
                 if (ret == 0) { 
                         log_message(LOG_NOTICE, "(ERROR) create rsa key: no valid key"); 
@@ -188,7 +188,7 @@ EVP_PKEY *create_rsa_key(RSA *rsa)
                         key = NULL; 
                 } 
         } 
- 
+
         return key;      
 }
 
@@ -325,6 +325,10 @@ verify_user_entry(struct pam_user *user, int flag)
 }
 
 
+/*
+ * get the public key of user
+ * passed in parameter
+ */
 EVP_PKEY 
 *get_public_key(const struct pam_user *user) 
 { 
@@ -490,7 +494,7 @@ char /* Add curent directory of user */
         if ((encrypted_data = malloc(RSA_size(rsa))) == NULL) 
                 return NULL;     
  
-        if (RSA_size(rsa) - 41 < strlen(buffer) + 1) { /* cut + multiple encrypt */ 
+        if (RSA_size(rsa) - 41 < strlen(buffer) + 1) { /* use AES */ 
                 log_message(LOG_ERR, "(ERROR) data is too large");
 		return NULL; 
         } 
@@ -735,7 +739,6 @@ user_authenticate(pam_handle_t *pamh, int ctrl, struct pam_user *user)
 }
 
 
-
 /* The Shamir authentication */ 
 int 
 shamir_authenticate(int ctrl, struct pam_user *user) 
@@ -744,7 +747,8 @@ shamir_authenticate(int ctrl, struct pam_user *user)
         int i;   
  
         /* get user group */ 
-        retval = get_group(user);        
+        retval = get_group(user);       
+ 
         switch (retval) { 
                 case SUCCESS: 
                         log_message(LOG_NOTICE, "user %s is set in the %s group (quorum: %d)", user->name, user->grp->name, user->grp->quorum); 
@@ -781,7 +785,8 @@ shamir_authenticate(int ctrl, struct pam_user *user)
 } 
 
 
-int get_signed_file(struct pam_user *user, char **file, const char *command_file)
+int /* lock file */ 
+get_signed_file(struct pam_user *user, char **file, const char *command_file)
 {
 	static int flag = 1;
 	static int *line_flag = NULL, len = 0;
