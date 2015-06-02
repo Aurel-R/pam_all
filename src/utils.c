@@ -20,10 +20,14 @@ _pam_parse(int argc, const char **argv)
 {
         int i, ctrl = 0;
 
-        for (i=0; i<argc; i++) {
-                if (!strcmp(argv[i], "debug"))
-                        ctrl |= PAM_DEBUG_ARG;
-        }
+	#ifdef DEBUG
+		ctrl |= PAM_DEBUG_ARG;
+	#else
+        	for (i=0; i<argc; i++) {
+                	if (!strncmp(argv[i], "debug", 5))
+                        	ctrl |= PAM_DEBUG_ARG;
+        	}
+	#endif
 
         return ctrl;
 }
@@ -45,21 +49,8 @@ log_message(int level, char *msg, ...)
         va_end(args);
 }
 
-/* specific to the passwd structure */
-void
-cleanup(void **data)
-{
-/* ! @Todo : rewrite */
-        char *xx;
 
-        if ((xx = (char *)data)) {
-                while(*xx)
-                        *xx++ = '\0';
-                free(*data);
-        }
-}
-
-/* for private key */
+/* for RSA private key */
 int 
 passwd_callback(char *pcszBuff, int size, int rwflag, void *pPass) 
 { 

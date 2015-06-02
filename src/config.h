@@ -4,6 +4,11 @@
 #define UNUSED __attribute__((unused))
 #define NAME     "pam_shamir.so"
 
+/*
+ * Strange bug...
+ */
+//#define PATH_MAX	1
+
 /* 
  * Contains the groups of shamir. 
  * Many groups as possible but one 
@@ -31,9 +36,7 @@
 #define LINE_LEN     512 /* Maximum line lenght for command file */
 
 #define PAM_DEBUG_ARG       0x0001 /* debug mod  */
-#define PAM_USE_FPASS_ARG   0x0040 /* used for use the first password save in PAM */
-/* !! add try_first_pass too !! */   
- 
+
 /* 
  * NO_CONF and BAD_CONF return success.  
  * it's necessary for the first configuration  
@@ -67,6 +70,9 @@
 #define SALT_SIZE       16 /* in bytes */ 
 #define RANDOM_FILE     "/dev/urandom" /* file used for random data */ 
 #define CARAC           "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz" 
+#define AES_KEY_LEN	32 /* in Bytes (256 bits) */
+#define AES_IV_LEN	16 /* in Bytes (128 bits) */
+#define MAX_BUF		1024
 
 #define EXIT		9	
  
@@ -80,28 +86,28 @@ char **command; /* to get the command via sudo */
 char **command_cp; /* orginal command before formatted */
 
 /* 
+ * One user can have a single 
+ * group (for this moment) 
+ */ 
+struct pam_user { 
+        char *name;  
+        char *pass; 
+        char *tty; 
+	char dir[PATH_MAX]; 
+        struct pam_group *grp; 
+};
+
+/* 
  * The groups are identified 
  * by their names. They point 
  * to a list of users 
  */ 
 struct pam_group { 
-        char *name; /* name of group */
-        int quorum; /* his quorum */
-        struct pam_user *users[MAX_USR_GRP]; /* users registred in the group */
+        char *name; 
+        int quorum;
+        struct pam_user *users[MAX_USR_GRP];
+	int nb_users; 
 }; 
  
-/* 
- * One user can have a single 
- * group (for this moment) 
- */ 
-struct pam_user { 
-        char *name;  /* name of user */
-        char *pass; /* his password (in clear) */
-        char *tty; /* his tty */
-	char dir[PATH_MAX]; /* his current worked directory */
-        struct pam_group *grp; /* his group */
-};
-
-
 #endif
 

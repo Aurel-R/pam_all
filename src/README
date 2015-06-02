@@ -1,3 +1,11 @@
+!!! NOT USE THIS README FOR THIS MOMENT !!!
+
+!!! NOT USE THIS README FOR THIS MOMENT !!!
+
+!!! NOT USE THIS README FOR THIS MOMENT !!!
+
+
+
 I'll use autoconf and automake later... 
 
 #########################################################
@@ -41,7 +49,7 @@ Info: add an user in sudo grp ->  usermod -a -G sudo UserName
 
 
 
---- configure sudoers ---
+--- configure sudoers --- USELESS ?
 	1. edit /etc/sudoers (sudo EDITOR=/usr/bin/vim visudo) :
 	
 	> - 	Defaults	env_reset

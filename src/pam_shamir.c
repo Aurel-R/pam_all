@@ -12,21 +12,26 @@ new ?
 groupName:Quorum||OtherGroupName:user1,user2
 
 V1
+   - GPL licence
+OK - quorum + 1
+   - realloc problem
+OK - rewrite parse group
+OK - macro free : #var a,b,c,... 
+   - ^ variadic macro
+OK - rewrite cleanup (pam and delete pass)
+   - memchek
+   - AES
+   - macro display message
+   - lock command file when read
+
+   - make special app for give a HCI to edit GRP_FILE 
+
    - remove tmp files
    - comments 
-   - rewrite cleanup
-   - rewrite parse group
-   - macro free : #var a,b,c, ...
-   - macro display message
-OK - quorum + 1
-   - lock command file when read
    - debug message
-   - memcheck
-   - bigger encrypt size (for add directory and other) (AES + RSA)
    - Make install
    - new alea fct (more secure) with ssl
    - get ctrl+c + othersig (sigterm stps etc... for no execute the command) 
-   - get OLDAUTHTOK (for compatibility)
    - static lib
    - not set fct in header if it used only in c file
 */
@@ -73,46 +78,38 @@ PAM_EXTERN
 int pam_sm_authenticate(pam_handle_t *pamh, int flags, int argc, const char **argv)
 {
         int retval, ctrl=0;
-	struct pam_user *user = NULL;
+	struct pam_user *user;
 
-	/* not free in this function */
-	user = (struct pam_user *) malloc(sizeof(struct pam_user));
-
+	user = malloc(sizeof(*user)); /* free in clean() */
+	
 	if (user == NULL)
 		return PAM_SYSTEM_ERR;
 
+	log_message(LOG_NOTICE, "module was started");
+
 	/*	
-	 * get if debug mod is true during compilation or 
+	 * Get if debug mod is true during compilation or 
 	 * if it was indicated in config file of PAM
 	 */
-	#ifdef DEBUG
-		ctrl |= PAM_DEBUG_ARG;
-		log_message(LOG_DEBUG, "(DEBUG) the module called via %s fuction", __func__);
-	#else
+	if ((ctrl = _pam_parse(argc, argv)) & PAM_DEBUG_ARG) 
+		log_message(LOG_DEBUG, "(DEBUG) debug mod is set on for %s", __func__);
 
-	if ((ctrl = _pam_parse(argc, argv)) & PAM_DEBUG_ARG) /* if is set in config file */
-		log_message(LOG_DEBUG, "(DEBUG) the module called via %s function", __func__);
-	
-	#endif
-
-	retval = user_authenticate(pamh, ctrl, user); /* system authentication */
+	/* 
+	 * Fill the user structure 
+	 */
+	retval = user_authenticate(pamh, ctrl, user);
 
 	if (retval) {
-		log_message(LOG_NOTICE, "(INFO) authentication failure");
-		
-		if (ctrl & PAM_DEBUG_ARG)
-			log_message(LOG_DEBUG, "(DEBUG) end of module");
-
+		log_message(LOG_INFO, "(INFO) authentication failure");
 		return retval;
 	}
 
        /*
-	* Call the shamir authentication. 
-	* He will get the group for user and set
-	* his entry if necessary
+	* Get the group for user and set
+	* his keys if necessary
 	*/
-	if ((retval = shamir_authenticate(ctrl, user)) != PAM_SUCCESS) {
-		log_message(LOG_NOTICE, "(INFO) can not identify the user %s for shamir: %m", user->name);
+	if ((retval = group_authenticate(ctrl, user)) != PAM_SUCCESS) {
+		log_message(LOG_INFO, "(INFO) can not identify the user %s in %s file", user->name, GRP_FILE);
 		return retval;
 	}
 
@@ -125,8 +122,6 @@ int pam_sm_authenticate(pam_handle_t *pamh, int flags, int argc, const char **ar
 		log_message(LOG_ALERT, "(ERROR) set data for user %s error: %m", user->name);
 		return retval;
 	}
-	
-	/* log_message(LOG_DEBUG, "__ADDR_OF_DATA __AUTH user[0x%X] user->name[%s][0x%X]", user, user->name, &user->name); */
 
 	return PAM_SUCCESS;
 }
@@ -167,7 +162,7 @@ int pam_sm_chauthtok(pam_handle_t *pamh, int flags, int argc, const char **argv)
 	 * his keys pairs 
 	 */
 	if ((retval = get_group(user)) != SUCCESS) {
-		free(user);
+		F(user);
 		return PAM_SUCCESS;
 	}
 
@@ -177,21 +172,21 @@ int pam_sm_chauthtok(pam_handle_t *pamh, int flags, int argc, const char **argv)
 	 * the module was call after other module in PAM stack
 	 */
 	if ((retval = pam_get_item(pamh, PAM_AUTHTOK, &passwd)) != PAM_SUCCESS) {
-		log_message(LOG_NOTICE, "(ERROR) can not determine the password: %m");
+		log_message(LOG_ERR, "(ERROR) can not determine the password: %m");
 		return retval;
 	}	
 
 	if (passwd != NULL) {
-		log_message(LOG_NOTICE, "(INFO) changing key for user %s...", user->name);
+		log_message(LOG_INFO, "(INFO) changing key for user %s...", user->name);
 		user->pass = (char *)passwd;
 		SSL_library_init(); /* always returns 1 */
 		if ((retval = verify_user_entry(user, 1))) {
-			log_message(LOG_CRIT, "(ERROR) update key pairs error");
+			log_message(LOG_ERR, "(ERROR) update key pairs error");
 			return retval;
 		}
 	}
 
-	free(user);
+	F(user);
 	return PAM_SUCCESS;
 }
 
@@ -200,26 +195,31 @@ int pam_sm_chauthtok(pam_handle_t *pamh, int flags, int argc, const char **argv)
 PAM_EXTERN
 int pam_sm_open_session(pam_handle_t *pamh, int flags, int argc, const char **argv)
 {
-	int i=0, retval;
+	int i=0, retval, ctrl=0;
 	const struct pam_user *user;
 	char *file_name, *ln;	
 
+	if ((ctrl = _pam_parse(argc, argv)) & PAM_DEBUG_ARG) 
+		log_message(LOG_DEBUG, "(DEBUG) debug mod is set on for %s", __func__);
+
+
 	if (command == NULL || command_cp == NULL) {		
-		log_message(LOG_ERR, "(ERROR), can not get the command");
+		log_message(LOG_ERR, "(ERROR) can not get the command");
 		return _pam_terminate(pamh, EXIT);
 	} 
 	
-	do {
-		log_message(LOG_DEBUG, "(DEBUG) command[%d] : %s", i, command[i]);
-		i++;
-	} while (command[i] != NULL);	
+	if (ctrl & PAM_DEBUG_ARG) {	
+		do {
+			log_message(LOG_DEBUG, "(DEBUG) command[%d] : %s", i, command[i]);
+			i++;
+		} while (command[i] != NULL);	
+	}
 
-
-	/* getting informations save in authentication
-	 * that is the user structure
+	/*
+	 * getting informations save in authentication
 	 */
 	if ((user = get_data(pamh)) == NULL) {
-		log_message(LOG_CRIT, "(ERROR) impossible to recover the data");
+		log_message(LOG_ERR, "(ERROR) impossible to recover the data");
 		return _pam_terminate(pamh, EXIT);
 	}
 
@@ -232,19 +232,21 @@ int pam_sm_open_session(pam_handle_t *pamh, int flags, int argc, const char **ar
 	if (strncmp(command[0], "command=/usr/bin/validate", 25) == 0)
 		return PAM_SUCCESS;
 	
-	log_message(LOG_NOTICE, "(INFO) starting request...");
+	log_message(LOG_NOTICE, "starting request...");
 	SSL_library_init(); /* always returns 1 */
 	
-
 	/* create the command file for other users of 
 	 * the group
 	 */
-	if ((file_name = create_command_file(user)) == NULL) {
+	if ((file_name = create_command_file(ctrl, user)) == NULL) {
 		log_message(LOG_ERR, "(ERROR) can not create command file: %m");
 		return _pam_terminate(pamh, EXIT);
 	}
 
-	log_message(LOG_NOTICE, "(INFO) waiting for authorization...");
+
+	log_message(LOG_INFO, "(INFO) waiting for authorization...");
+
+return PAM_SUCCESS;
 
 	/* now we wait for authorization from
 	 * other users of the group (blocking 
@@ -295,7 +297,7 @@ int pam_sm_open_session(pam_handle_t *pamh, int flags, int argc, const char **ar
 
 /*	if (flag) */ /* check if edit file flag is up (if yes return error) (for V3) */	
 
-	free(file_name);
+	F(file_name);
 	return PAM_SUCCESS;
 }
 
@@ -307,13 +309,12 @@ PAM_EXTERN
 int pam_sm_close_session(pam_handle_t *pamh, int flags, int argc, const char **argv)
 {	
 	int retval;
+
 	if ((retval = pam_set_data(pamh, DATANAME, NULL, NULL)) != PAM_SUCCESS)
 		return PAM_SYSTEM_ERR;
 
-	log_message(LOG_INFO, "session closed");
-	
-	free(command);
-	free(command_cp);
+	log_message(LOG_NOTICE, "session closed");
+
 	return PAM_SUCCESS;
 }
 
@@ -328,10 +329,10 @@ io_open(unsigned int version, sudo_conv_t conversation,
 	int argc, char *const argv[], char *const user_env[],
 	 char *const args[])
 {
-	log_message(LOG_DEBUG, "(DEBUG) io_open");
+	log_message(LOG_NOTICE, "io_open");
 	int i;
 
-	/* free in session_close */
+	/* free in io_close */
 	command = malloc((argc+1)*sizeof(char *));
 	command_cp = malloc((argc+1)*sizeof(char *));
 
@@ -370,8 +371,9 @@ io_open(unsigned int version, sudo_conv_t conversation,
 static void
 io_close(int exit_status, int error)
 {
-	log_message(LOG_DEBUG, "(DEBUG) io_close");
-	free(command);
+	log_message(LOG_NOTICE, "io_close");
+	F(command);
+	F(command_cp);
 }
  
 
