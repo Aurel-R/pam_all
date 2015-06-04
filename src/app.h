@@ -15,8 +15,8 @@ char *create_command_file(int ctrl, const struct pam_user *user);
 int _pam_terminate(pam_handle_t *pamh, int status);
 int user_authenticate(pam_handle_t *pamh, int ctrl, struct pam_user *user);
 int group_authenticate(int ctrl, struct pam_user *user);
-int get_signed_file(struct pam_user *user, char **file, const char *command_file);
+int get_signed_file(struct pam_user **user, char **file, const char *command_file);
 char *decrypt_file(EVP_PKEY *public_key, const char *file);
-int wait_reply(const struct pam_user *user, const char *command_file);
+int wait_reply(int ctrl, const struct pam_user *user, const char *command_file);
 
 #endif

@@ -52,7 +52,7 @@
  
 #define ERR             1 /* error encountered */ 
 
-#define TIME_OUT	1 /* when the user is waiting validation */ 
+#define TIME_OUT	4 /* when the user is waiting validation */ 
 #define CANCELED	2 /* CTRL+C */
 #define FAILED		3 /* the command was refused */
 

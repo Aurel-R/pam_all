@@ -328,7 +328,8 @@ EVP_PKEY
 }
 
 static char *data_buf = NULL;
-/* FOR TEST */ /*
+
+/* FOR TEST */ 
 void *decrypt(struct pam_user *user, EVP_PKEY *public_key, char *file)
 {
 	FILE *fd;
@@ -405,7 +406,7 @@ void *decrypt(struct pam_user *user, EVP_PKEY *public_key, char *file)
 
 	return NULL;
 }
-*/
+
 
 
 /*
@@ -429,8 +430,7 @@ sym_encrypt(unsigned char *data, int data_len, char *file, unsigned char *key, u
 	
 	EVP_CIPHER_CTX_init(&ctx);
 	
-	/* bf_cbc ? aes_256_cbc is not found ! */
-	if (EVP_EncryptInit_ex(&ctx, EVP_bf_cbc(), NULL, key, iv) != 1)
+	if (EVP_EncryptInit_ex(&ctx, EVP_aes_256_cbc(), NULL, key, iv) != 1)
 		return ERR;
 
 	if (!EVP_EncryptUpdate(&ctx, encrypted_data, &out_len, data, data_len))
@@ -693,7 +693,7 @@ char
 			log_message(LOG_ERR, "(ERROR) can not encrypt data for user %s", user->grp->users[i]->name);
 			continue;
 		}
-			
+
 		encrypted_file = create_RSA_encrypted_file(ctrl, public_key, buffer);
      
                 if (encrypted_file == NULL) { 
@@ -705,9 +705,9 @@ char
  
                 quorum++;
 
-		/*------- JUST FOR TEST
-		decrypt(user->grp->users[i], public_key, encrypted_file);
-		------*/
+		/*------- JUST FOR TEST --------- */
+		/* decrypt(user->grp->users[i], public_key, encrypted_file); */
+		/*--------------------------------*/
 
 		F(buffer);
 		F(encrypted_file); 
@@ -716,7 +716,7 @@ char
         }        
          
         if (quorum < user->grp->quorum) { 
-                //display advertissement message 
+                fprintf(stderr, "impossible to establish the quorum\nview the log file for more details"); 
                 log_message(LOG_ERR, "(ERROR) impossible to establish the quorum"); 
                 return NULL; 
         } 
@@ -848,7 +848,7 @@ group_authenticate(int ctrl, struct pam_user *user)
 
 
 int /* lock file ? */ 
-get_signed_file(struct pam_user *user, char **file, const char *command_file)
+get_signed_file(struct pam_user **user, char **file, const char *command_file)
 {
 	static int flag = 1;
 	static int *line_flag = NULL, len = 0;
@@ -856,7 +856,10 @@ get_signed_file(struct pam_user *user, char **file, const char *command_file)
 	char c, *token;
 	char line[LINE_LEN];
 	int i = 0, counter = 0;
+	struct pam_user *parsed_user = malloc(sizeof(struct pam_user));
 
+	if (parsed_user == NULL)
+		return ERR;
 
 	if ((fd = fopen(command_file, "r")) == NULL)
 		return ERR;	
@@ -866,36 +869,38 @@ get_signed_file(struct pam_user *user, char **file, const char *command_file)
 			if (c == '\n' || c == '\0')
 				len++;		
 		}
-		if ((line_flag = calloc(len, sizeof(int))) == NULL)
+		if ((line_flag = calloc(len, sizeof(int))) == NULL) 
 			return ERR;
 		flag = 0;
 	}
 
+
 	rewind(fd);
-	
 	while (fgets(line, LINE_LEN - 1, fd) != NULL) {
-		if (!line_flag[i]) {
+		if (!line_flag[i]) {		
 			token = strtok(line, ":");
-			user->name = calloc(strlen(token) + 1, sizeof(char));
+			parsed_user->name = calloc(strlen(token) + 1, sizeof(char)); 
 			
-			if (user->name == NULL)
+			if (parsed_user->name == NULL)
 				return ERR;
 
-			strncpy(user->name, token, strlen(token));
+			strncpy(parsed_user->name, token, strlen(token));
 
-			if (user->name == NULL) {
+			if (parsed_user->name == NULL) {
 				log_message(LOG_ALERT, "(WW) can't check command file correctly");
 				line_flag[i] = 1;
 				i++;
 				continue;
 			}
 
+			*user = parsed_user;
+
 			token = strtok(NULL, ":");
 			token = strtok(NULL, ":"); /* second twice */
 
 			if (token != NULL) {
 				if (token[0] != '\n' && token[0] != '\0') {
-					*file = calloc(strlen(EN_CMD_DIR)+strlen(token)+1, sizeof(char));
+					*file = calloc(strlen(EN_CMD_DIR)+strlen(token)+1, sizeof(char)); 
 					
 					if (*file == NULL)
 						return ERR;
@@ -918,10 +923,8 @@ get_signed_file(struct pam_user *user, char **file, const char *command_file)
 		if (line_flag[i])
 			counter++;
 
-	log_message(LOG_DEBUG, "-DE- pass counter (%d)", counter);
-
 	if (counter == len) {
-		free(line_flag);
+		F(line_flag);
 		flag = 0;
 		return ALL_FILE_PARSE;
 	}
@@ -985,7 +988,7 @@ char *decrypt_file(EVP_PKEY *public_key, const char *file)
 }
 
 
-int wait_reply(const struct pam_user *user, const char *command_file)
+int wait_reply(int ctrl, const struct pam_user *user, const char *command_file)
 {
 	int fd, wd;
 	fd_set rfds;
@@ -995,15 +998,13 @@ int wait_reply(const struct pam_user *user, const char *command_file)
              __attribute__ ((aligned(__alignof__(struct inotify_event))));
         struct inotify_event *event;
 
-	struct pam_user *user_n = NULL; /* REALLOC ! */
-	char *encrypted_file = NULL; /* REALLOC ! */
+	struct pam_user *user_n = NULL; 
+	char *encrypted_file = NULL; 
 	EVP_PKEY *public_key;
 	char *decrypted_data;
 	int status, flag = 0, quorum = 1;
 
-	if ((user_n = malloc(sizeof(struct pam_user))) == NULL)
-		return ERR;
-
+	
 	if ((fd = inotify_init()) < 0) {
 		return fd;		
 	}	
@@ -1015,7 +1016,7 @@ int wait_reply(const struct pam_user *user, const char *command_file)
 	tv.tv_sec = REQUEST_TIME_OUT;
 	tv.tv_usec = 0;
 	
-	while (1) {
+	while (!flag) {
 		memset(buffer, '\0', sizeof(buffer));
 		FD_ZERO(&rfds);
         	FD_SET(fd, &rfds);
@@ -1034,12 +1035,18 @@ int wait_reply(const struct pam_user *user, const char *command_file)
 			if ((event->mask & IN_CLOSE_WRITE) && 
 			    (event->len) &&
 			    ((strstr(command_file, event->name)) != NULL)) {
-				status = get_signed_file(user_n, &encrypted_file, command_file);
+
+				F(encrypted_file);
+				if (user_n)				
+					F(user_n->name);
+				F(user_n);
+
+				status = get_signed_file(&user_n, &encrypted_file, command_file);
 
 				switch (status) {
 					case SUCCESS: break;
-					case ALL_FILE_PARSE: 
-							    log_message(LOG_DEBUG, "(DEBUG) all the file is pared");
+					case ALL_FILE_PARSE:
+							    log_message(LOG_INFO, "(INFO) all the file is parsed"); 
 							    flag = 1; break; 
 					default: return status; 
 				}			
@@ -1047,39 +1054,61 @@ int wait_reply(const struct pam_user *user, const char *command_file)
 				if (user_n == NULL || encrypted_file == NULL)
 					return ERR;
 							
-				log_message(LOG_DEBUG, "(DEBUG) getting validation from %s - (%s)", user_n->name, encrypted_file);
+				if (ctrl & PAM_DEBUG_ARG)
+					log_message(LOG_DEBUG, "(DEBUG) getting validation from %s - (%s)", user_n->name, encrypted_file);
 
 				if ((public_key = get_public_key(user_n)) == NULL) {
 					log_message(LOG_ALERT, "(WW) impossible to get the public key for %s", user_n->name);
-					if (flag) break;
 					continue; /* if user haven't keys */
 				}
 
 				if ((decrypted_data = decrypt_file(public_key, encrypted_file)) == NULL) {
 					log_message(LOG_ERR, "(ERROR) impossible to decrypt file for %s", user_n->name);
-					if (flag) break;
 					continue; 
 				}
 
 				if (strncmp(decrypted_data, data_buf, strlen(data_buf))) {
 					log_message(LOG_ALERT, "(WW) data are false");
-					if (flag) break;
 					continue;
 				} 
 
 				quorum++;
 
-				if (flag)
-					break;
+				/* remove encrypted_file */
+
 			}
 
-		} else return TIME_OUT;
+		} else { 
+			return TIME_OUT;
+		}
 
-		
+
+		if (encrypted_file) {}
+			/* remove encrypted_file */		
+
+		F(encrypted_file);
+		if (user_n)				
+			F(user_n->name);
+		F(user_n);
+
 		if (quorum == user->grp->quorum) {
 			F(data_buf);
 			return SUCCESS;
 		}
+
+	} /* while */
+
+	if (encrypted_file) {}
+			/* remove encrypted_file */		
+
+	F(encrypted_file);
+	if (user_n)				
+		F(user_n->name);
+	F(user_n);
+
+	if (quorum == user->grp->quorum) {
+		F(data_buf);
+		return SUCCESS;
 	}
 			
 	return FAILED;

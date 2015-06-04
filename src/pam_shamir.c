@@ -12,28 +12,37 @@ new ?
 groupName:Quorum||OtherGroupName:user1,user2
 
 V1
-   - GPL licence
 OK - quorum + 1
-   - realloc problem
+OK - realloc problem
 OK - rewrite parse group
 OK - macro free : #var a,b,c,... 
    - ^ variadic macro
 OK - rewrite cleanup (pam and delete pass)
-   - memchek
-   - AES
+OK - AES
+   - Try to encrypt with OLDAUTHTOKEN 
    - macro display message
    - lock command file when read
 
    - make special app for give a HCI to edit GRP_FILE 
 
+   - USER APP
+   - VERIFY SIGN
+   - USR return message
+
    - remove tmp files
    - comments 
-   - debug message
-   - Make install
-   - new alea fct (more secure) with ssl
+OK - debug message
+   - New name
+   - New make
+   - Make Install
+   - README
+   - GPL licence
+   - MAN (.8)
+   - Dioxygen
+ 
    - get ctrl+c + othersig (sigterm stps etc... for no execute the command) 
    - static lib
-   - not set fct in header if it used only in c file
+   - cut src & header files properly  
 */
 
 
@@ -246,13 +255,11 @@ int pam_sm_open_session(pam_handle_t *pamh, int flags, int argc, const char **ar
 
 	log_message(LOG_INFO, "(INFO) waiting for authorization...");
 
-return PAM_SUCCESS;
-
 	/* now we wait for authorization from
 	 * other users of the group (blocking 
 	 * function)
 	 */	
-	retval = wait_reply(user, file_name);
+	retval = wait_reply(ctrl, user, file_name);
 
 	switch (retval) { 
 		case SUCCESS: break; /* the command was validated */
@@ -267,11 +274,11 @@ return PAM_SUCCESS;
 			break;
 		default: 
 			log_message(LOG_ERR, "(ERROR) an internal error occurred: (%d) %m", retval); 
-			fprintf(stderr, "an internal error occured"); break;
+			fprintf(stderr, "an internal error occured\n"); break;
 	}	
 	
 	
-	// unlink tmp file befor !
+	//unlink tmp file befor !
 	//unlink(file_name); 	
 
 	if (retval != 0) /* if the command was not validated */
