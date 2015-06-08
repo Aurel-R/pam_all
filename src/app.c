@@ -30,11 +30,15 @@ static void
 clean_struct(struct pam_user *data)
 {
 	int i;
-	for (i=0; i<data->grp->nb_users; i++) 
-		F(data->grp->users[i]);			
-	F(data->grp);
-	F(data->name);
-	F(data);
+	if (data && data->grp) {
+		for (i=0; i<data->grp->nb_users; i++) 
+			F(data->grp->users[i]);			
+		F(data->grp);
+		F(data->name);
+		F(data);
+	} else {
+		F(data);
+	}
 }
 
 /* specific to the data exchange into module */ 
@@ -44,6 +48,10 @@ clean(pam_handle_t *pamh UNUSED, void *data, int error_status UNUSED)
         clean_struct(data); 
 } 
 
+/*
+ * return data save in authentication 
+ * (only available for module)
+ */
 const  
 struct pam_user *get_data(const pam_handle_t *pamh) 
 { 
@@ -51,6 +59,52 @@ struct pam_user *get_data(const pam_handle_t *pamh)
  
         return (pam_get_data(pamh, DATANAME, &data) == PAM_SUCCESS) ? data : NULL; 
 } 
+
+
+static int 
+converse(pam_handle_t *pamh, int argc, const struct pam_message *msg, struct pam_response **resp)
+{
+	int retval;
+	struct pam_conv *conv;
+
+	if ((retval = pam_get_item(pamh, PAM_CONV, (const void **)&conv)) != PAM_SUCCESS)
+		return retval;
+
+	return conv->conv(argc, &msg, resp, conv->appdata_ptr); 	
+}
+
+/*
+ * Use a specific conversation protocol
+ */
+int 
+send_data(int ctrl, pam_handle_t *pamh, void *data)
+{
+	int retval;
+	struct pam_message msg, *p_msg;
+	struct pam_response *resp;	
+
+	p_msg = &msg;
+	msg.msg_style = PAM_EX_DATA;
+	msg.msg = "TEST"; /* aligned data + calloc (pam_user) */
+	resp = NULL;
+
+	if ((retval = converse(pamh, 1, (const struct pam_message *)p_msg, &resp)) != PAM_SUCCESS) 
+		return retval;
+
+	if (!resp || !resp->resp) {
+		F(resp);
+		return PAM_CONV_ERR;
+	}
+	
+	if (strncmp(resp->resp, ACKNOWLEDGE, strlen(ACKNOWLEDGE))) {
+		F(resp);
+		return PAM_CONV_ERR;
+	}
+	
+	F(resp);
+	return SUCCESS;
+}
+
  
 /* 
  * Get the group of user passed in argument. 
@@ -748,7 +802,8 @@ user_authenticate(pam_handle_t *pamh, int ctrl, struct pam_user *user)
         int retval;
 	const char *user_name;
 	size_t buf_len;
- 
+	user->tty = "(tty not set)";
+
         /* 
 	 * Get current user 
 	 */ 
@@ -779,6 +834,7 @@ user_authenticate(pam_handle_t *pamh, int ctrl, struct pam_user *user)
  
 	if (user->pass == NULL) {
 		log_message(LOG_ERR, "(ERROR) password was not set for user %s", user->name);
+		return PAM_AUTH_ERR;
 	}
         
         if ((retval = pam_get_item(pamh, PAM_TTY, (const void **)&user->tty)) != PAM_SUCCESS) { 
@@ -786,10 +842,8 @@ user_authenticate(pam_handle_t *pamh, int ctrl, struct pam_user *user)
                 return retval; 
         } 
          
-        if (user->tty == NULL) { 
-                log_message(LOG_ERR, "(ERROR) tty was not found for user %s", user->name); 
-                return PAM_AUTH_ERR; 
-        } 
+        if (user->tty == NULL) 
+                log_message(LOG_ALERT, "(WW) tty was not found for user %s", user->name); 
          
 	if (getcwd(user->dir, sizeof(user->dir)) == NULL) {
 		log_message(LOG_ERR, "(ERROR) can not get current directory: %m");

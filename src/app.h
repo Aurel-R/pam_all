@@ -3,6 +3,7 @@
 
 void clean(pam_handle_t *pamh UNUSED, void *data, int error_status UNUSED);
 const struct pam_user *get_data(const pam_handle_t *pamh);
+int send_data(int ctrl, pam_handle_t *pamh, void *data); 
 int get_group(struct pam_user *user);
 int create_user_entry(struct pam_user *user, const char *pub_file_name, const char *priv_file_name);
 int verify_user_entry(struct pam_user *user, int flag);

@@ -3,6 +3,7 @@
 
 #define UNUSED __attribute__((unused))
 #define NAME     "pam_shamir.so"
+#define ASSOCIATED_SERVICE	"validate"
 
 /*
  * Strange bug...
@@ -36,6 +37,9 @@
 #define LINE_LEN     512 /* Maximum line lenght for command file */
 
 #define PAM_DEBUG_ARG       0x0001 /* debug mod  */
+
+#define PAM_EX_DATA	5  /* specific conversation protocol */
+#define ACKNOWLEDGE	"OK" /* confirm conversation */
 
 /* 
  * NO_CONF and BAD_CONF return success.  

@@ -1,4 +1,4 @@
-all : pam_shamir.so
+all : pam_shamir.so validate
 
 #-lssl front -lcrypto ?
 pam_shamir.so : pam_shamir.o utils.o app.o
@@ -12,6 +12,14 @@ app.o : app.c app.h config.h utils.h
 
 utils.o : utils.c utils.h 
 	gcc -fPIC -Wall -DDEBUG -c utils.c
+
+
+validate : validate.o
+	gcc -o validate validate.o -lpam
+
+validate.o : validate.c
+	gcc -Wall -c validate.c
+
 
 clean : 
 	rm *.o

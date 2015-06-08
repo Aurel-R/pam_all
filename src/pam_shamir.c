@@ -9,7 +9,7 @@ V2
 -Actual group :
 groupName:Quorum:user1,user2,user3,user4
 new ? 
-groupName:Quorum||OtherGroupName:user1,user2
+groupName:Quorum || OtherGroupName:user5,user6,user7
 
 V1
 OK - quorum + 1
@@ -88,13 +88,12 @@ int pam_sm_authenticate(pam_handle_t *pamh, int flags, int argc, const char **ar
 {
         int retval, ctrl=0;
 	struct pam_user *user;
+	const void *service_name = NULL;
 
 	user = malloc(sizeof(*user)); /* free in clean() */
 	
 	if (user == NULL)
 		return PAM_SYSTEM_ERR;
-
-	log_message(LOG_NOTICE, "module was started");
 
 	/*	
 	 * Get if debug mod is true during compilation or 
@@ -102,6 +101,14 @@ int pam_sm_authenticate(pam_handle_t *pamh, int flags, int argc, const char **ar
 	 */
 	if ((ctrl = _pam_parse(argc, argv)) & PAM_DEBUG_ARG) 
 		log_message(LOG_DEBUG, "(DEBUG) debug mod is set on for %s", __func__);
+
+
+	if ((retval = pam_get_item(pamh, PAM_SERVICE, &service_name)) != PAM_SUCCESS || !service_name) {
+                log_message(LOG_ERR, "(ERROR) can not determine the service");
+                return retval;
+        }    
+
+	log_message(LOG_INFO, "(INFO) %s [auth] was called from '%s' service", NAME, service_name);
 
 	/* 
 	 * Fill the user structure 
@@ -124,8 +131,7 @@ int pam_sm_authenticate(pam_handle_t *pamh, int flags, int argc, const char **ar
 
        /*
 	* Now we have to set current user data for the session management.
-	* pam_set_data provide data for him and other modules too, but never 
-	* for an application
+	* pam_set_data provide data for him and other modules too
 	*/
 	if ((retval = pam_set_data(pamh, DATANAME, user, clean)) != PAM_SUCCESS) {
 		log_message(LOG_ALERT, "(ERROR) set data for user %s error: %m", user->name);
@@ -162,9 +168,9 @@ int pam_sm_chauthtok(pam_handle_t *pamh, int flags, int argc, const char **argv)
 		return PAM_SYSTEM_ERR;
 
 	if ((retval = pam_get_user(pamh, (const char **)&user->name, NULL)) != PAM_SUCCESS) {
-			log_message(LOG_ERR, "(ERROR) can not determine user name: %m");
-			return retval;
-		}
+		log_message(LOG_ERR, "(ERROR) can not determine user name: %m");
+		return retval;
+	}
 		
 
 	/* if user haven't group, it's not necessary to create 
@@ -206,12 +212,48 @@ int pam_sm_open_session(pam_handle_t *pamh, int flags, int argc, const char **ar
 {
 	int i=0, retval, ctrl=0;
 	const struct pam_user *user;
-	char *file_name, *ln;	
-
+	char *file_name, *ln;
+	const void  *service_name = NULL;
+	
 	if ((ctrl = _pam_parse(argc, argv)) & PAM_DEBUG_ARG) 
 		log_message(LOG_DEBUG, "(DEBUG) debug mod is set on for %s", __func__);
 
+	/*
+	 * getting informations save in authentication
+	 */
+	if ((user = get_data(pamh)) == NULL) {
+		log_message(LOG_ERR, "(ERROR) impossible to recover the data");
+		return _pam_terminate(pamh, EXIT);
+	}
 
+	if ((retval = pam_get_item(pamh, PAM_SERVICE, &service_name)) != PAM_SUCCESS || !service_name) {
+                log_message(LOG_ERR, "(ERROR) can not determine the service");
+                return _pam_terminate(pamh, EXIT);
+        }    
+
+	log_message(LOG_INFO, "(INFO) %s [session] was called from '%s' service", NAME, service_name);
+
+	/*
+	 * getting if the service is the 'validate' command
+	 */
+        if (!strncmp(service_name, ASSOCIATED_SERVICE, strlen(ASSOCIATED_SERVICE))) {
+		if (ctrl & PAM_DEBUG_ARG)
+			log_message(LOG_DEBUG, "(DEBUG) sending data...");
+
+		/* send some data to service */
+		retval = send_data(ctrl, pamh, (void *)user);
+
+		if (retval != SUCCESS) {
+			log_message(LOG_ERR, "(ERROR) impossible to transmit data");
+			return _pam_terminate(pamh, EXIT);
+		}
+
+		if (ctrl & PAM_DEBUG_ARG)
+			log_message(LOG_DEBUG, "(DEBUG) data has been transmitted");
+	
+		return PAM_SUCCESS;
+        }
+		
 	if (command == NULL || command_cp == NULL) {		
 		log_message(LOG_ERR, "(ERROR) can not get the command");
 		return _pam_terminate(pamh, EXIT);
@@ -224,13 +266,6 @@ int pam_sm_open_session(pam_handle_t *pamh, int flags, int argc, const char **ar
 		} while (command[i] != NULL);	
 	}
 
-	/*
-	 * getting informations save in authentication
-	 */
-	if ((user = get_data(pamh)) == NULL) {
-		log_message(LOG_ERR, "(ERROR) impossible to recover the data");
-		return _pam_terminate(pamh, EXIT);
-	}
 
 	log_message(LOG_NOTICE, "session opened by %s in %s (member of %s)", user->name, user->tty, user->grp->name);
 
@@ -240,6 +275,7 @@ int pam_sm_open_session(pam_handle_t *pamh, int flags, int argc, const char **ar
 	 */
 	if (strncmp(command[0], "command=/usr/bin/validate", 25) == 0)
 		return PAM_SUCCESS;
+return PAM_SUCCESS;
 	
 	log_message(LOG_NOTICE, "starting request...");
 	SSL_library_init(); /* always returns 1 */
