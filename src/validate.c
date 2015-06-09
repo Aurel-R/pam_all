@@ -1,22 +1,19 @@
-/*
-
-converse fct is under BSD(?) licence.
-I modified the fct converse for my uses
-
-*/
-
 #include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
 #include <getopt.h>
 #include <unistd.h>
-#include <pwd.h>
 #include <sys/types.h>
 #include <linux/limits.h>
 #include <security/pam_appl.h>
 
+
+
 #define MAX_USR_GRP	20
 #define PAM_EX_DATA	5
+#define USR_DIR	"/etc/shared/users/"
+#define CMD_DIR	"/var/lib/shamir/"
+
 
 struct pam_user { 
         char *name;  
@@ -33,10 +30,24 @@ struct pam_group {
         int nb_users; 
 }; 
 
+struct command_info {
+	char *command_file; 	/* the path (and name) of the command file */
+	int cmd_number; 	/* (PID of request)  */
+	char *user; 		/* name of the user */
+	char *command; 		/* command line */
+	struct command_info *next; 
+};
+
+
 
 static struct pam_conv pamc;
 static struct pam_user *data = NULL;
 
+
+/*
+ * 'converse' fct is under BSD(?) licence.
+ * I modified 'converse' for my uses
+ */
 int converse(int n, const struct pam_message **msg,
 	struct pam_response **resp, void *appdata_ptr)
 {
@@ -114,29 +125,36 @@ fail:
 }
 
 
+
 void usage(char *prog_name)
 {
-
 	printf("usage: \n");
 	printf("\nshow request list:\n"); 
 	printf("\t$sudo %s -l\n", prog_name);
 	printf("\t$sudo %s --list\n", prog_name);
 	printf("\nvalidate a request:\n");
 	printf("\t$sudo %s ID_1 [ID_2 ID_3 ID_4 ...]\n\n", prog_name);
-
 }
 
 
-int list(void)
+
+struct command_info *list(struct pam_user *user)
 {
-	return 0;
+	struct command_info *curr, *head;
+
+	
+
+	return NULL;
 }
+
+
 
 int main(int argc, char **argv)
 {
 	pam_handle_t *pamh=NULL;
 	int retval, i;	
 	struct pam_user *user = NULL;
+	struct command_info *cmd_info;
 	char *username;
 
 	if (getuid()) {
@@ -170,11 +188,12 @@ int main(int argc, char **argv)
 
 	user = (struct pam_user *)data;
 
+	/*----- FOR TEST ----*/
 	printf("user name is : %s\n", user->name);
 	printf("user group is : %s\n", user->grp->name);
 	for (i=0; i<user->grp->nb_users; i++)
-		printf("user[%d] (%s)\n", i, user->grp->users[i]->name);
-
+		printf("user[%d] (%s)\n", i, user->grp->users[i]->name);	
+	/*----- FOR TEST ----*/
 	
 	if (argc < 2) {
 		usage(argv[0]);
@@ -183,23 +202,19 @@ int main(int argc, char **argv)
 
 	
 	if (!strncmp(argv[1], "-l", 2) || !strncmp(argv[1], "--list", 6)) 
-		retval = list();	
-
-
+		cmd_info = list(user);	
 
 
 	if ((retval = pam_close_session(pamh, 0)) != PAM_SUCCESS) {
-		fprintf(stderr, "error: closing PAM session\n");
+		fprintf(stderr, "closing pam session error (%d)\n", retval);
 		return 1;
 	}
 
-	if (pam_end(pamh,retval) != PAM_SUCCESS) {     /* close Linux-PAM */
+	if (pam_end(pamh,retval) != PAM_SUCCESS) {   
      		pamh = NULL;
-        	fprintf(stderr, "failed to release authenticator\n");
+        	fprintf(stderr, "release pam error\n");
         	return 1;
     	}
 	
-	printf("end\n");
-
 	return 0;
 }
