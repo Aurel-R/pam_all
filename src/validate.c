@@ -10,6 +10,7 @@ I modified the fct converse for my uses
 #include <string.h>
 #include <getopt.h>
 #include <unistd.h>
+#include <pwd.h>
 #include <sys/types.h>
 #include <linux/limits.h>
 #include <security/pam_appl.h>
@@ -115,7 +116,6 @@ fail:
 
 void usage(char *prog_name)
 {
-/* char text[] = {#include "usage.text"} */
 
 	printf("usage: \n");
 	printf("\nshow request list:\n"); 
@@ -123,7 +123,9 @@ void usage(char *prog_name)
 	printf("\t$sudo %s --list\n", prog_name);
 	printf("\nvalidate a request:\n");
 	printf("\t$sudo %s ID_1 [ID_2 ID_3 ID_4 ...]\n\n", prog_name);
+
 }
+
 
 int list(void)
 {
@@ -133,31 +135,35 @@ int list(void)
 int main(int argc, char **argv)
 {
 	pam_handle_t *pamh=NULL;
-	int retval, i;
-	const char *username="tutu";
+	int retval, i;	
 	struct pam_user *user = NULL;
+	char *username;
 
-	pamc.conv = &converse;
-	if ((retval = pam_start("validate", username, &pamc, &pamh)) != PAM_SUCCESS) {
-		fprintf(stderr, "erreur pam_start\n");
+	if (getuid()) {
+		fprintf(stderr,"please, use 'sudo' to run this command\n");
 		return 1;
 	}
 	
-	printf("pam_start ok\n");
+	username = getlogin();
 
-	if ((retval = pam_authenticate(pamh, 0)) != PAM_SUCCESS) {
-		fprintf(stderr, "erreur pam_auth\n");
+	if (username == NULL)
 		return 1;
+
+	pamc.conv = &converse;
+	if ((retval = pam_start("validate", username, &pamc, &pamh)) != PAM_SUCCESS) {
+		fprintf(stderr, "pam start error (%d)\n", retval);
+		return retval;
+	}
+	
+	if ((retval = pam_authenticate(pamh, 0)) != PAM_SUCCESS) {
+		fprintf(stderr, "authentification error (%d)\n", retval);
+		return retval;
 	}
 
-	printf("pam_auth ok\n");
-
 	if ((retval = pam_open_session(pamh, 0)) != PAM_SUCCESS) {
-		fprintf(stderr, "erreur pam_sess\n");
-		return 1;
+		fprintf(stderr, "session error (%d)\n", retval);
+		return retval;
 	}	
-
-	printf("pam_sess ok\n");
 
 	if (data == NULL)
 		return 2;
@@ -177,7 +183,7 @@ int main(int argc, char **argv)
 
 	
 	if (!strncmp(argv[1], "-l", 2) || !strncmp(argv[1], "--list", 6)) 
-		return list();	
+		retval = list();	
 
 
 
