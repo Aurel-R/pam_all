@@ -79,13 +79,13 @@ converse(pam_handle_t *pamh, int argc, const struct pam_message *msg, struct pam
 int 
 send_data(int ctrl, pam_handle_t *pamh, void *data)
 {
-	int retval;
+	int retval, len;
 	struct pam_message msg, *p_msg;
 	struct pam_response *resp;	
-
+	
 	p_msg = &msg;
 	msg.msg_style = PAM_EX_DATA;
-	msg.msg = "TEST"; /* aligned data + calloc (pam_user) */
+	msg.msg = (char *)data;
 	resp = NULL;
 
 	if ((retval = converse(pamh, 1, (const struct pam_message *)p_msg, &resp)) != PAM_SUCCESS) 
