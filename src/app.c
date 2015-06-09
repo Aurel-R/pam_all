@@ -79,7 +79,7 @@ converse(pam_handle_t *pamh, int argc, const struct pam_message *msg, struct pam
 int 
 send_data(int ctrl, pam_handle_t *pamh, void *data)
 {
-	int retval, len;
+	int retval;
 	struct pam_message msg, *p_msg;
 	struct pam_response *resp;	
 	
@@ -128,7 +128,7 @@ get_group(struct pam_user *user)
 	FILE *fd;
 	char *line = calloc(MAX_LINE_LEN, sizeof(*line)); 
 	char *token, *users;
-	int i = 0, len;
+	int i = 0, len, flag = 0;
 	
 	if (line == NULL)
 		return PAM_SYSTEM_ERR;
@@ -146,7 +146,9 @@ get_group(struct pam_user *user)
         while ((fgets(line, MAX_LINE_LEN - 1, fd)) != NULL) { 		
 		if (strstr(line, user->name) == NULL)
 			continue;
-		
+	
+		flag = 1;
+	
 		user->grp->name = strtok(line, ":"); 
 
 		token = strtok(NULL, ":");
@@ -158,6 +160,7 @@ get_group(struct pam_user *user)
 				F(user->grp);
 				return PAM_SYSTEM_ERR;
 			}
+
 			user->grp->users[i]->name = users;
 		}
 		user->grp->nb_users = i;
@@ -166,6 +169,9 @@ get_group(struct pam_user *user)
 	}
 
 	fclose(fd);
+
+	if (!flag)
+		return NO_USR_GRP;
 
 	if (user->grp->quorum < 2) {
 		F(user->grp);
