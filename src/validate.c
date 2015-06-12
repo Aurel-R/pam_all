@@ -11,9 +11,14 @@
 
 #define MAX_USR_GRP	20
 #define PAM_EX_DATA	5
-#define USR_DIR	"/etc/shared/users/"
-#define CMD_DIR	"/var/lib/shamir/"
+#define USR_DIR		"/etc/shared/users/"
+#define CMD_DIR		"/var/lib/shamir/"
+#define EN_CMD_DIR	"/var/lib/shamir/tmp/"
+#define LINE_LEN	512
 
+#define AES_KEY_LEN	32
+#define AES_IV_LEN	16
+#define MAX_BUF		1024
 
 struct pam_user { 
         char *name;  
@@ -33,7 +38,7 @@ struct pam_group {
 struct command_info {
 	int cmd_number;
 	pid_t cmd_pid;
-	char *cmd_file; 	/* name of the command file */
+	char *cmd_file; 	/* path (and name) of the command file */
 	char *user; 		/* name of the user who started the cmd */
 	char *cmd; 		/* command line */
 	struct command_info *next; 
@@ -52,13 +57,14 @@ void usage(char *prog_name)
 	printf("\t$sudo %s -l\n", prog_name);
 	printf("\t$sudo %s --list\n", prog_name);
 	printf("\nvalidate a request:\n");
-	printf("\t$sudo %s ID_1 [ID_2 ID_3 ID_4 ...]\n\n", prog_name);
+	printf("\t$sudo %s pid_1 [pid_2 pid_3 pid_4 ...]\n\n", prog_name);
 }
 
 
-void terminate(pam_handle_t *pamh, int status)
+void terminate(pam_handle_t *pamh, struct command_info *cmd, int status)
 {
 	int retval;
+	struct command_info *item;
 	
 	if ((retval = pam_close_session(pamh, 0)) != PAM_SUCCESS) {
 		fprintf(stderr, "closing pam session error (%d)\n", retval);
@@ -70,6 +76,16 @@ void terminate(pam_handle_t *pamh, int status)
         	fprintf(stderr, "release pam error (%d)\n", retval);
 		status = retval;
     	}
+
+	if (cmd == NULL)
+		exit(status);
+
+	while ((item = cmd) != NULL) {
+		if (item->cmd_file != NULL)
+			free(item->cmd_file);
+		cmd = cmd->next;
+		free(item);
+	}		
 
 	exit(status);
 }
@@ -158,7 +174,12 @@ fail:
 int decrypt_cmd_file(struct pam_user *user, struct command_info *command)
 {
 	//if err command->cmd = NULL; return 1;
+	
+
+
 	command->cmd = NULL;
+
+
 	return 0;
 }
 
@@ -180,12 +201,19 @@ struct command_info *init_list(struct pam_user *user)
 		if (!strncmp(file->d_name, user->grp->name, strlen(user->grp->name)) &&
 		    strstr(file->d_name, user->name) == NULL) {	
 			i++;
-			curr = malloc(sizeof(*curr)); /* free in ??? */
+			curr = malloc(sizeof(*curr)); 
 			if (curr == NULL)
 				return NULL;
 			
 			curr->cmd_number = i;
-			curr->cmd_file = file->d_name; // alloc ?
+			curr->cmd_file = calloc(strlen(CMD_DIR) + strlen(file->d_name) + 1, sizeof(char));
+			
+			if (curr->cmd_file == NULL)
+				return NULL;
+
+			strncpy(curr->cmd_file, CMD_DIR, strlen(CMD_DIR));
+			strncpy(curr->cmd_file+strlen(CMD_DIR), file->d_name, strlen(file->d_name));
+ 
 			token = strtok(file->d_name, "-");
 			token = strtok(NULL, "-");
 			curr->user = strtok(token, ".");
@@ -200,13 +228,12 @@ struct command_info *init_list(struct pam_user *user)
 			head = curr;				
 		} 
 
-	} /* while */
+	}
 	
 	if (i == 0) {
 		curr = malloc(sizeof(*curr));
 		if (curr == NULL)
 			return NULL;
-		printf("PASS\n");
 		curr->cmd_number = i;
 		curr->next = head;
 		head = curr;
@@ -220,7 +247,7 @@ struct command_info *init_list(struct pam_user *user)
 void show_list(struct command_info *items)
 {
 	while (items) {
-		printf("%d.\t%s$ %s (pid=%d)\n", items->cmd_number, items->user, items->cmd, items->cmd_pid);
+		printf("%d.\t%s$ %s (pid=%d) (file=%s)\n", items->cmd_number, items->user, items->cmd, items->cmd_pid, items->cmd_file);
 		items = items->next;
 	}
 }
@@ -277,7 +304,7 @@ int main(int argc, char **argv)
 	
 	if (argc < 2) {
 		usage(argv[0]);
-		terminate(pamh, 1);
+		terminate(pamh, NULL, 1);
 	}  
 
 	
@@ -286,22 +313,22 @@ int main(int argc, char **argv)
 		
 		if (cmd_info == NULL) {
 			fprintf(stderr, "initalise list error: %m\n");
-			terminate(pamh, 1);
+			terminate(pamh, NULL, 1);
 		}
 
 		if (cmd_info->cmd_number == 0) {
 			printf("no command is waitting\n");
-			terminate(pamh, 0);
+			terminate(pamh, cmd_info, 0);
 		}
 
 		show_list(cmd_info);
 
-		terminate(pamh, 0);
+		terminate(pamh, cmd_info, 0);
 	}
 
 	
 
-	terminate(pamh, 0);
+	terminate(pamh, cmd_info, 0);
 
 	return 0;
 }
