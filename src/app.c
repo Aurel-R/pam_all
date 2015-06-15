@@ -978,11 +978,13 @@ get_signed_file(struct pam_user **user, char **file, const char *command_file)
 					
 					if (*file == NULL)
 						return ERR;
-
-					strncpy(*file, EN_CMD_DIR, strlen(EN_CMD_DIR));
-					strncpy(*file+strlen(EN_CMD_DIR), token, strlen(token));
+					strncpy(*file, token, strlen(token));
 					*(*file + strlen(*file) - 1) = '\0';
 
+				/*	strncpy(*file, EN_CMD_DIR, strlen(EN_CMD_DIR));
+					strncpy(*file+strlen(EN_CMD_DIR), token, strlen(token));
+					*(*file + strlen(*file) - 1) = '\0';
+				*/
 					line_flag[i] = 1;
 					break;
 				}
@@ -1010,8 +1012,8 @@ char
 *verify(EVP_PKEY *public_key, const char *file)
 {
 	FILE *fd;
-	int ret, len;
-	char *decrypted_data, *buffer;
+	int len, ret;
+	char *buffer;
 
 	RSA *rsa = RSA_new();
 
@@ -1021,44 +1023,33 @@ char
                 return NULL; 
         }
 
-	len = RSA_size(rsa) - 11;
+	len = RSA_size(rsa);
 
 	buffer = calloc(len, sizeof(char));
 	
-	if (buffer == NULL)
+	if (buffer == NULL) {
+		RSA_free(rsa);
 		return NULL;
+	}
 
 	if ((fd = fopen(file, "r")) == NULL ) {
-		log_message(LOG_ERR, "(ERROR) can not open encrypted file: %m");
+		log_message(LOG_ERR, "(ERROR) can not open signed file '%s': %m", file);
+		RSA_free(rsa);
 		return NULL;
 	}
 
 	ret=fread(buffer, sizeof(*buffer), len, fd); 
-
-	log_message(LOG_DEBUG, "-_-_-_(DEBUG) RET = %d, sizeofbuff=%d", ret, sizeof(*buffer));
-
 	fclose(fd);
 
-	decrypted_data = calloc(len+1, sizeof(char));
+	log_message(LOG_DEBUG, "RET = %d  |  LEN = %d | data_buf = (%s)", ret, len, data_buf);
 
-	if (decrypted_data == NULL)
-		return NULL;
-
-	ret = RSA_public_decrypt(len, (unsigned char *)buffer, (unsigned char *)decrypted_data, rsa, RSA_PKCS1_PADDING);
-
-	log_message(LOG_DEBUG, "-_-_-_-_-_-RET = %d", ret);
-
-	if (ret == -1) {
-		log_message(LOG_ERR, "(ERROR) can not decrypt: %m");
+	if (!RSA_verify(NID_sha1, (const unsigned char *)data_buf, strlen(data_buf), (unsigned char *)buffer, ret, rsa)) {	
+		log_message(LOG_ERR, "(ERROR) impossible to verify the singature of file '%s'", file);
+		RSA_free(rsa);
 		return NULL;
 	}
 
-	int j;
-	for(j=0; j<256; j++)
-		log_message(LOG_DEBUG, "-_-_-_ (DEBUG) -DE-  %d [%c] [0x%X]", j, decrypted_data[j], decrypted_data[j]);
-
-	return decrypted_data;
-
+	return data_buf;
 }
 
 
@@ -1148,6 +1139,9 @@ int wait_reply(int ctrl, const struct pam_user *user, const char *command_file)
 				} 
 
 				quorum++;
+			
+				log_message(LOG_NOTICE, "user %s validated the command", user_n->name);	
+				fprintf(stdout, "user %s validated the command\n\r", user_n->name);				
 
 				/* remove encrypted_file */
 

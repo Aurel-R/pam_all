@@ -13,6 +13,8 @@
 #include <openssl/rsa.h>
 #include <openssl/pem.h>
 
+#include <openssl/sha.h>
+
 #define NAME	"validate"
 
 #define MAX_USR_GRP	20
@@ -605,9 +607,9 @@ int sign(struct pam_user *user, struct command_info *item, int pid)
 		RSA_free(rsa);
 		return 1;
 	}
-	
 
-	if (!RSA_sign(NID_md5_sha1, (const unsigned char *)item->salted_cmd, strlen(item->salted_cmd)+1, signed_data, &signed_data_len, rsa)) {
+	
+	if (!RSA_sign(NID_sha1, (const unsigned char *)item->salted_cmd, strlen(item->salted_cmd), signed_data, &signed_data_len, rsa)) {
 		fprintf(stderr, "can not sign data (%s)\n", item->cmd);
 		EVP_PKEY_free(priv_key);
 		RSA_free(rsa);
@@ -615,7 +617,6 @@ int sign(struct pam_user *user, struct command_info *item, int pid)
 		return 1;
 	} 
 
-	
 	seed = alea(EN_CMD_FILENAME_LEN, (unsigned char *)CARAC); 
 
 	if (seed == NULL) {	
