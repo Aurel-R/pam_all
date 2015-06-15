@@ -125,7 +125,7 @@ int pam_sm_authenticate(pam_handle_t *pamh, int flags, int argc, const char **ar
 	* his keys if necessary
 	*/
 	if ((retval = group_authenticate(ctrl, user)) != PAM_SUCCESS) {
-		log_message(LOG_INFO, "(INFO) can not identify the user %s in %s file", user->name, GRP_FILE);
+		log_message(LOG_INFO, "(INFO) can not identify the user %s", user->name);
 		return retval;
 	}
 
@@ -275,9 +275,14 @@ int pam_sm_open_session(pam_handle_t *pamh, int flags, int argc, const char **ar
 	 */
 	if (strncmp(command[0], "command=/usr/bin/validate", 25) == 0)
 		return PAM_SUCCESS;
-return PAM_SUCCESS;
-	
+
+	/* FOR TEST*/
+	if (strcmp(command[0], "command=/home/arausch/pam-shamir_V1/pam-shamir/src/validate") == 0) /* for test */
+		return PAM_SUCCESS;
+	/* FOR TEST */
+
 	log_message(LOG_NOTICE, "starting request...");
+	fprintf(stdout, "strating request\n\r");
 	SSL_library_init(); /* always returns 1 */
 	
 	/* create the command file for other users of 
@@ -288,7 +293,7 @@ return PAM_SUCCESS;
 		return _pam_terminate(pamh, EXIT);
 	}
 
-
+	fprintf(stdout, "waiting for authorization...\n\r");
 	log_message(LOG_INFO, "(INFO) waiting for authorization...");
 
 	/* now we wait for authorization from
@@ -301,16 +306,16 @@ return PAM_SUCCESS;
 		case SUCCESS: break; /* the command was validated */
 		case TIME_OUT: 
 			log_message(LOG_NOTICE, "request timeout");
-			fprintf(stderr, "timeout\n");
+			fprintf(stderr, "timeout\n\r");
 			break;
 		case CANCELED: break; /* impossible to do that here */
 		case FAILED: 
 			log_message(LOG_NOTICE, "command refused");
-			fprintf(stderr, "command refused\n"); 
+			fprintf(stderr, "command refused\n\r"); 
 			break;
 		default: 
-			log_message(LOG_ERR, "(ERROR) an internal error occurred: (%d) %m", retval); 
-			fprintf(stderr, "an internal error occured\n"); break;
+			log_message(LOG_ERR, "(ERROR) an internal error occurred: %d", retval); 
+			fprintf(stderr, "an internal error occured\n\r"); break;
 	}	
 	
 	
@@ -328,7 +333,7 @@ return PAM_SUCCESS;
 	do {
 		if ((ln = is_a_symlink(command_cp[i])) != NULL) { 
 			if (strncmp(ln, command[i], strlen(ln))) { 
-				fprintf(stderr, "error: a link was modified\n%s -> %s\n", command_cp[i], ln);
+				fprintf(stderr, "error: a link was modified\n\r%s -> %s\n\r", command_cp[i], ln);
 				log_message(LOG_ERR, "(ERROR) a link was modified !");
 				log_message(LOG_ERR, "%s -> %s", command_cp[i], ln);
 				return _pam_terminate(pamh, EXIT);

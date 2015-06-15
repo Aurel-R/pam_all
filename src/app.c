@@ -30,6 +30,9 @@ static void
 clean_struct(struct pam_user *data)
 {
 	int i;
+	if (data)
+		F(data->pass);
+
 	if (data && data->grp) {
 		for (i=0; i<data->grp->nb_users; i++) 
 			F(data->grp->users[i]);			
@@ -568,14 +571,17 @@ char
 
 	strncpy(plain_data, (char *)salt, strlen((const char *)salt));
 	strncpy(plain_data+strlen((const char *)salt), data, strlen(data));
-	
-	/* free in wait_reply() */
-	data_buf = calloc(strlen(plain_data)+1, sizeof(char));
-	
-	if (data_buf == NULL)
-		return NULL;
 
-	strncpy(data_buf, plain_data, strlen(plain_data));	
+	if (data_buf == NULL) {	
+		/* free in wait_reply() */ 
+		data_buf = calloc(strlen(plain_data)+1, sizeof(char));
+		
+		if (data_buf == NULL)
+			return NULL;
+
+		strncpy(data_buf, plain_data, strlen(plain_data));	
+	}
+
 
 	/*  encrypt data in file */
 	if (sym_encrypt((unsigned char *)plain_data, strlen(plain_data), aes_file, key, iv) == ERR) {
@@ -808,6 +814,7 @@ user_authenticate(pam_handle_t *pamh, int ctrl, struct pam_user *user)
         int retval;
 	const char *user_name;
 	size_t buf_len;
+	const void *password;
 	user->tty = "(tty not set)";
 
         /* 
@@ -832,17 +839,24 @@ user_authenticate(pam_handle_t *pamh, int ctrl, struct pam_user *user)
       
 	/*
 	 * Get the password save in pam stack 
-	 */
-        if ((retval = pam_get_item(pamh, PAM_AUTHTOK, (const void **)&(user->pass))) != PAM_SUCCESS) { 
+	 */	
+        if ((retval = pam_get_item(pamh, PAM_AUTHTOK, &password)) != PAM_SUCCESS) { 
                 log_message(LOG_ERR, "(ERROR) can not get password item: %m"); 
                 return retval; 
         }  
- 
-	if (user->pass == NULL) {
+	
+	if (password == NULL) {
 		log_message(LOG_ERR, "(ERROR) password was not set for user %s", user->name);
 		return PAM_AUTH_ERR;
-	}
-        
+
+	} 
+
+	user->pass = calloc(strlen(password)+1, sizeof(char));
+	if (user->pass == NULL)
+		return PAM_SYSTEM_ERR;
+
+	strncpy(user->pass, password, strlen(password));
+      
         if ((retval = pam_get_item(pamh, PAM_TTY, (const void **)&user->tty)) != PAM_SUCCESS) { 
                 log_message(LOG_ERR, "(ERROR) can not determine the tty for %s: %m", user->name); 
                 return retval; 
@@ -992,8 +1006,8 @@ get_signed_file(struct pam_user **user, char **file, const char *command_file)
 	return SUCCESS;
 }
 
-/* not clean and never use for this moment*/
-char *decrypt_file(EVP_PKEY *public_key, const char *file)
+char 
+*verify(EVP_PKEY *public_key, const char *file)
 {
 	FILE *fd;
 	int ret, len;
@@ -1108,22 +1122,23 @@ int wait_reply(int ctrl, const struct pam_user *user, const char *command_file)
 					case ALL_FILE_PARSE:
 							    log_message(LOG_INFO, "(INFO) all the file is parsed"); 
 							    flag = 1; break; 
-					default: return status; 
+					default: log_message(LOG_ERR, "(ERROR) impossible to get signed file");
+						 return status; 
 				}			
 
 				if (user_n == NULL || encrypted_file == NULL)
-					return ERR;
+					continue; 
 							
 				if (ctrl & PAM_DEBUG_ARG)
-					log_message(LOG_DEBUG, "(DEBUG) getting validation from %s - (%s)", user_n->name, encrypted_file);
+					log_message(LOG_DEBUG, "(DEBUG) getting validation from %s", user_n->name);
 
 				if ((public_key = get_public_key(user_n)) == NULL) {
 					log_message(LOG_ALERT, "(WW) impossible to get the public key for %s", user_n->name);
 					continue; /* if user haven't keys */
 				}
 
-				if ((decrypted_data = decrypt_file(public_key, encrypted_file)) == NULL) {
-					log_message(LOG_ERR, "(ERROR) impossible to decrypt file for %s", user_n->name);
+				if ((decrypted_data = verify(public_key, encrypted_file)) == NULL) {
+					log_message(LOG_ERR, "(ERROR) impossible to verify file for %s", user_n->name);
 					continue; 
 				}
 

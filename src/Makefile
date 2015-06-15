@@ -15,7 +15,7 @@ utils.o : utils.c utils.h
 
 
 validate : validate.o
-	gcc -o validate validate.o -lpam
+	gcc -o validate validate.o -lpam -lcrypto -lssl
 
 validate.o : validate.c
 	gcc -Wall -c validate.c
