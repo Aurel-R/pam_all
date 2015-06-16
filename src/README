@@ -1,10 +1,3 @@
-!!! NOT USE THIS README FOR THE MOMENT !!!
-
-!!! NOT USE THIS README FOR THE MOMENT !!!
-
-!!! NOT USE THIS README FOR THE MOMENT !!!
-
-
 
 I'll use autoconf and automake later... 
 
@@ -27,7 +20,7 @@ I'll use autoconf and automake later...
 
 (on other terminal) 
 
-######################################################
+#########################################################
 
 Info: add an user in sudo grp ->  usermod -a -G sudo UserName
 
@@ -42,14 +35,10 @@ Info: add an user in sudo grp ->  usermod -a -G sudo UserName
 	2. copy pam_shamir.so in /lib/security/ (depend of your system (lib32, lib64, x86_64-linux-gnu...)
 	3. chown root:root pam_shamir.so
 	4. chmod 644 pam_shamir.so
+	5. ln -s /lib/security/pam_shamir.so /usr/lib/sudo/shared.so
 
 
---- install sudo plugin ---
-	1. ln -s /lib/security/pam_shamir.so /usr/lib/sudo/shared.so
-
-
-
---- configure sudoers --- USELESS ?
+--- configure sudoers --- 
 	1. edit /etc/sudoers (sudo EDITOR=/usr/bin/vim visudo) :
 	
 	> - 	Defaults	env_reset
@@ -66,23 +55,26 @@ Info: add an user in sudo grp ->  usermod -a -G sudo UserName
 
 	
 --- configure pam ---
-	1. edit /etc/pam.d/sudo  (adapt the module path):
+	1 create /etc/pam.d/validate (adapt the module path):
+
+	> +	auth    required        pam_unix.so
+	> +	auth    required        /lib/x86_64-linux-gnu/security/pam_shamir.so debug
+	> +	session required        /lib/x86_64-linux-gnu/security/pam_shamir.so debug
+
+
+
+	2. edit /etc/pam.d/sudo :
   
-	> +	auth       required   			/lib/x86_64-linux-gnu/security/pam_shamir.so debug
-	>	auth       required   			pam_env.so readenv=1 user_readenv=0
-	>	auth       required   			pam_env.so readenv=1 envfile=/etc/default/locale user_readenv=0
-	> -	@include common-auth
-	> +	auth    [success=1 default=ignore]      pam_unix.so nullok_secure use_first_pass 
-	> +	auth    requisite                       pam_deny.so
-	> +	auth    required                        pam_permit.so
-	> +	auth    optional                        pam_cap.so
+	>	auth       required   pam_env.so readenv=1 user_readenv=0
+	>	auth       required   pam_env.so readenv=1 envfile=/etc/default/locale user_readenv=0
+	>	@include common-auth
+	> + 	auth       required     /lib/x86_64-linux-gnu/security/pam_shamir.so debug 
 	>	@include common-account
-	> +	session	required			/lib/x86_64-linux-gnu/security/pam_shamir.so
+	> +	session required        /lib/x86_64-linux-gnu/security/pam_shamir.so
 	>	@include common-session-noninteractive 
+	
 
-
---- configure pam 2 ---
-	1. edit /etc/pam.d/common-password :
+	3. edit /etc/pam.d/common-password :
 
 	>	password        [success=1 default=ignore]      pam_unix.so obscure sha512
 	>	password        requisite                       pam_deny.so
