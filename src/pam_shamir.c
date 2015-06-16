@@ -9,41 +9,36 @@ V2
 -Actual group :
 groupName:Quorum:user1,user2,user3,user4
 new ? 
-groupName:Quorum || OtherGroupName:user5,user6,user7
+groupName: Quorum || OtherGroupName :user5,user6,user7
 
 V1
-OK - quorum + 1
-OK - realloc problem
-OK - rewrite parse group
-OK - macro free : #var a,b,c,... 
-   - ^ variadic macro
-OK - rewrite cleanup (pam and delete pass)
-OK - AES
+   - long command sign
+   - remove tmp files
+   - new name
+   - new architecture
+   - make
+   - make install
+   - rm *test*
+   - README
+   - comments
+   - GPL licence (+BSD (converse))
+   - MAN (.8)
+   - Doxygen
+
+   - PAMH CONTEXT SAVE
+
+   - freeing variadic macro
    - Try to encrypt with OLDAUTHTOKEN 
    - macro display message
    - lock command file when read
 
    - make special app for give a HCI to edit GRP_FILE 
 
-   - USER APP
-   - VERIFY SIGN
-   - USR return message
-
-   - remove tmp files
-   - comments 
-OK - debug message
-   - New name
-   - New make
-   - Make Install
-   - README
-   - GPL licence
-   - MAN (.8)
-   - Dioxygen
- 
    - get ctrl+c + othersig (sigterm stps etc... for no execute the command) 
    - static lib
    - cut src & header files properly  
-*/
+
+ @Todo ! */
 
 
 #define PAM_SM_ACCOUNT
@@ -282,7 +277,7 @@ int pam_sm_open_session(pam_handle_t *pamh, int flags, int argc, const char **ar
 	/* FOR TEST */
 
 	log_message(LOG_NOTICE, "starting request...");
-	fprintf(stdout, "strating request\n\r");
+	fprintf(stdout, "strating request\r\n");
 	SSL_library_init(); /* always returns 1 */
 	
 	/* create the command file for other users of 
@@ -293,7 +288,7 @@ int pam_sm_open_session(pam_handle_t *pamh, int flags, int argc, const char **ar
 		return _pam_terminate(pamh, EXIT);
 	}
 
-	fprintf(stdout, "waiting for authorization...\n\r");
+	fprintf(stdout, "waiting for authorization...\r\n");
 	log_message(LOG_INFO, "(INFO) waiting for authorization...");
 
 	/* now we wait for authorization from
@@ -306,21 +301,21 @@ int pam_sm_open_session(pam_handle_t *pamh, int flags, int argc, const char **ar
 		case SUCCESS: break; /* the command was validated */
 		case TIME_OUT: 
 			log_message(LOG_NOTICE, "request timeout");
-			fprintf(stderr, "timeout\n\r");
+			fprintf(stderr, "timeout\r\n");
 			break;
 		case CANCELED: break; /* impossible to do that here */
 		case FAILED: 
 			log_message(LOG_NOTICE, "command refused");
-			fprintf(stderr, "command refused\n\r"); 
+			fprintf(stderr, "command refused\r\n"); 
 			break;
 		default: 
 			log_message(LOG_ERR, "(ERROR) an internal error occurred: %d", retval); 
-			fprintf(stderr, "an internal error occured\n\r"); break;
+			fprintf(stderr, "an internal error occured\r\n"); break;
 	}	
 	
 	
 	//unlink tmp file befor !
-	//unlink(file_name); 	
+	unlink(file_name); 	
 
 	if (retval != 0) /* if the command was not validated */
 		return _pam_terminate(pamh, EXIT);
@@ -333,7 +328,7 @@ int pam_sm_open_session(pam_handle_t *pamh, int flags, int argc, const char **ar
 	do {
 		if ((ln = is_a_symlink(command_cp[i])) != NULL) { 
 			if (strncmp(ln, command[i], strlen(ln))) { 
-				fprintf(stderr, "error: a link was modified\n\r%s -> %s\n\r", command_cp[i], ln);
+				fprintf(stderr, "error: a link was modified\r\n%s -> %s\r\n", command_cp[i], ln);
 				log_message(LOG_ERR, "(ERROR) a link was modified !");
 				log_message(LOG_ERR, "%s -> %s", command_cp[i], ln);
 				return _pam_terminate(pamh, EXIT);

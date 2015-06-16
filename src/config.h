@@ -60,7 +60,7 @@
 #define CANCELED	2 /* CTRL+C */
 #define FAILED		3 /* the command was refused */
 
-#define REQUEST_TIME_OUT	120 /* 3200 */ /* in second */
+#define REQUEST_TIME_OUT	3200 /* in second */
 
 #define ALL_FILE_PARSE	2 /* returned when all lines of command file was parsed */
              

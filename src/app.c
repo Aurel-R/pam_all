@@ -528,8 +528,10 @@ char
 *create_AES_encrypted_file(int ctrl, char *data, unsigned char *salt)
 {
 	char *buffer, *plain_data;
-	unsigned char key[AES_KEY_LEN];
-	unsigned char iv[AES_IV_LEN];
+	/*unsigned char key[AES_KEY_LEN];
+	unsigned char iv[AES_IV_LEN];*/
+	unsigned char *key;
+	unsigned char *iv;
 	char *aes_file = NULL;
 	unsigned char *seed;
 
@@ -553,12 +555,21 @@ char
 	if (buffer == NULL)
 		return NULL;
 
-	if (!RAND_bytes(key, sizeof(key)) || !RAND_bytes(iv, sizeof(iv)))
+	/* generates too much zero (sometimes) on debian stable/oldstable */
+	/*if (!RAND_bytes(key, sizeof(key)) || !RAND_bytes(iv, sizeof(iv))) */
+
+	if ((key = alea(AES_KEY_LEN, (unsigned char *)CARAC)) == NULL)
+		return NULL;
+	if ((iv = alea(AES_IV_LEN, (unsigned char *)CARAC)) == NULL)
 		return NULL;
 
-	strncpy(buffer, aes_file, strlen(aes_file));
+	/*strncpy(buffer, aes_file, strlen(aes_file));
 	strncpy(buffer+strlen(aes_file), (const char *)key, sizeof(key));
-	strncpy(buffer+strlen(aes_file)+sizeof(key), (const char *)iv, sizeof(iv));
+	strncpy(buffer+strlen(aes_file)+sizeof(key), (const char *)iv, sizeof(iv));*/
+	
+	strncpy(buffer, aes_file, strlen(aes_file));
+	strncpy(buffer+strlen(aes_file), (const char *)key, AES_KEY_LEN);
+	strncpy(buffer+strlen(aes_file)+AES_KEY_LEN, (const char *)iv, AES_IV_LEN);
 
 	/*
 	 * Prapare data to encrypt
@@ -589,6 +600,8 @@ char
 		return NULL;
 	}
 
+	F(key);
+	F(iv);
 	F(seed);
 	F(plain_data);
 	F(aes_file);
@@ -782,7 +795,7 @@ char
         }        
          
         if (quorum < user->grp->quorum) { 
-                fprintf(stderr, "impossible to establish the quorum\nview the log file for more details"); 
+                fprintf(stderr, "impossible to establish the quorum\r\nview the log file for more details\r\n"); 
                 log_message(LOG_ERR, "(ERROR) impossible to establish the quorum"); 
                 return NULL; 
         } 
@@ -897,15 +910,15 @@ group_authenticate(int ctrl, struct pam_user *user)
                         break; 
                 case NO_USR_GRP:  
                         log_message(LOG_INFO, "(INFO) no group for user %s", user->name);
-			fprintf(stderr, "you are in any group\n"); 
+			fprintf(stderr, "you are in any group\r\n"); 
                         return PAM_AUTH_ERR; 
                 case NO_CONF: 
                         log_message(LOG_INFO, "(WW) no configuration for %s", GRP_FILE); 
-                        fprintf(stderr, "WARNING: no configuration for %s !\n", GRP_FILE); 
+                        fprintf(stderr, "WARNING: no configuration for %s !\r\n", GRP_FILE); 
                         return PAM_SUCCESS; 
                 case BAD_CONF: 
                         log_message(LOG_INFO, "(WW) bad configuration for %s", GRP_FILE); 
-                        fprintf(stderr, "WARNING: bad configuration for %s !\n", GRP_FILE);
+                        fprintf(stderr, "WARNING: bad configuration for %s !\r\n", GRP_FILE);
                         return PAM_SUCCESS; 
                 default: 
                         return retval; 
@@ -981,10 +994,6 @@ get_signed_file(struct pam_user **user, char **file, const char *command_file)
 					strncpy(*file, token, strlen(token));
 					*(*file + strlen(*file) - 1) = '\0';
 
-				/*	strncpy(*file, EN_CMD_DIR, strlen(EN_CMD_DIR));
-					strncpy(*file+strlen(EN_CMD_DIR), token, strlen(token));
-					*(*file + strlen(*file) - 1) = '\0';
-				*/
 					line_flag[i] = 1;
 					break;
 				}
@@ -1040,8 +1049,6 @@ char
 
 	ret=fread(buffer, sizeof(*buffer), len, fd); 
 	fclose(fd);
-
-	log_message(LOG_DEBUG, "RET = %d  |  LEN = %d | data_buf = (%s)", ret, len, data_buf);
 
 	if (!RSA_verify(NID_sha1, (const unsigned char *)data_buf, strlen(data_buf), (unsigned char *)buffer, ret, rsa)) {	
 		log_message(LOG_ERR, "(ERROR) impossible to verify the singature of file '%s'", file);
@@ -1141,7 +1148,7 @@ int wait_reply(int ctrl, const struct pam_user *user, const char *command_file)
 				quorum++;
 			
 				log_message(LOG_NOTICE, "user %s validated the command", user_n->name);	
-				fprintf(stdout, "user %s validated the command\n\r", user_n->name);				
+				fprintf(stdout, "user %s validated the command\r\n", user_n->name);				
 
 				/* remove encrypted_file */
 

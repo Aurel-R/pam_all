@@ -350,7 +350,7 @@ char *aes_decrypt(char *file, char *key, char *iv)
 
 	
 	if ((fd = fopen(file, "r")) == NULL) {
-		fprintf(stderr, "can not open aes file '%s'\n", file);
+		fprintf(stderr, "can not open aes file '%s': %m\n", file);
 		return NULL;
 	}
 	
