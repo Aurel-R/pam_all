@@ -17,7 +17,7 @@ V1
    - new name
    - new architecture
    - make
-   - make install
+   - make install (arch + groups conf example)
    - rm *test*
    - README
    - comments
@@ -209,6 +209,7 @@ int pam_sm_open_session(pam_handle_t *pamh, int flags, int argc, const char **ar
 	const struct pam_user *user;
 	char *file_name, *ln;
 	const void  *service_name = NULL;
+	struct tempory_files *tmp_files = NULL;
 	
 	if ((ctrl = _pam_parse(argc, argv)) & PAM_DEBUG_ARG) 
 		log_message(LOG_DEBUG, "(DEBUG) debug mod is set on for %s", __func__);
@@ -280,10 +281,11 @@ int pam_sm_open_session(pam_handle_t *pamh, int flags, int argc, const char **ar
 	fprintf(stdout, "strating request\r\n");
 	SSL_library_init(); /* always returns 1 */
 	
+	
 	/* create the command file for other users of 
 	 * the group
 	 */
-	if ((file_name = create_command_file(ctrl, user)) == NULL) {
+	if ((file_name = create_command_file(ctrl, user, &tmp_files)) == NULL) {
 		log_message(LOG_ERR, "(ERROR) can not create command file: %m");
 		return _pam_terminate(pamh, EXIT);
 	}
@@ -314,7 +316,7 @@ int pam_sm_open_session(pam_handle_t *pamh, int flags, int argc, const char **ar
 	}	
 	
 	
-	//unlink tmp file befor !
+	unlink_tmp_files(tmp_files);
 	unlink(file_name); 	
 
 	if (retval != 0) /* if the command was not validated */
@@ -399,11 +401,6 @@ io_open(unsigned int version, sudo_conv_t conversation,
 		command[i] = argv[i];
 		command_cp[i] = argv[i];		
 	}
-
-
-/*	for (i=1; i<argc; i++)
-		command[i] = argv[i];
-*/	
 
 	command[argc] = NULL;
 	command_cp[argc] = NULL;

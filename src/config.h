@@ -112,6 +112,11 @@ struct pam_group {
         struct pam_user *users[MAX_USR_GRP];
 	int nb_users; 
 }; 
+
+struct tempory_files {
+	char *name;
+	struct tempory_files *next;
+};
  
 #endif
 

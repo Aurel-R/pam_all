@@ -108,6 +108,24 @@ send_data(int ctrl, pam_handle_t *pamh, void *data)
 	return SUCCESS;
 }
 
+void
+unlink_tmp_files(struct tempory_files *tmp_files) 
+{
+	struct tempory_files *item;
+
+	if (tmp_files == NULL)
+		return;
+
+	while ((item = tmp_files) != NULL) {
+		if (item->name) {
+			unlink(item->name);
+			log_message(LOG_DEBUG, "-DE- UNLINK :  %s", item->name);
+			F(item->name);
+			tmp_files = tmp_files->next;
+			F(item);
+		}
+	}
+}
  
 /* 
  * Get the group of user passed in argument. 
@@ -707,14 +725,15 @@ char
  * Signed_file point to the user validation command
  */
 char  
-*create_command_file(int ctrl, const struct pam_user *user)  
+*create_command_file(int ctrl, const struct pam_user *user, struct tempory_files **tmp_files)  
 { 
         char *file_name = calloc(FILENAME_MAX, sizeof(char)); /* free in pam_sm_open_session */
         unsigned char *salt; 
-        int i = 0, quorum = 1; 
+        int i = 0, quorum = 1, len; 
         FILE *fd; 
         char *formated_command = NULL, *encrypted_file, *buffer; 
-        EVP_PKEY *public_key = NULL; 
+        EVP_PKEY *public_key = NULL;
+	struct tempory_files *head = NULL, *curr = NULL; 
          
         if (file_name == NULL) 
                 return NULL; 
@@ -773,6 +792,19 @@ char
 			continue;
 		}
 
+		curr = malloc(sizeof(*curr));
+		if (curr == NULL)
+			return NULL;
+		len = strlen(buffer) - AES_KEY_LEN - AES_IV_LEN;
+		curr->name = calloc(len, sizeof(char));
+		if (curr->name == NULL)
+			return NULL;
+		strncpy(curr->name, buffer, len);
+		curr->name[len] = '\0';
+		curr->next = head;
+		head = curr; 
+
+
 		encrypted_file = create_RSA_encrypted_file(ctrl, public_key, buffer);
      
                 if (encrypted_file == NULL) { 
@@ -780,6 +812,16 @@ char
                         continue; 
                 } 
  
+		curr = malloc(sizeof(*curr));
+		if (curr == NULL)
+			return NULL;
+		curr->name = calloc(strlen(encrypted_file) + 1, sizeof(char));
+		if (curr->name == NULL)
+			return NULL;
+		strncpy(curr->name, encrypted_file, strlen(encrypted_file));
+		curr->next = head;
+		head = curr;
+
                 fprintf(fd, "%s:%s:\n", user->grp->users[i]->name, encrypted_file); 
  
                 quorum++;
@@ -796,10 +838,12 @@ char
          
         if (quorum < user->grp->quorum) { 
                 fprintf(stderr, "impossible to establish the quorum\r\nview the log file for more details\r\n"); 
-                log_message(LOG_ERR, "(ERROR) impossible to establish the quorum"); 
+                log_message(LOG_ERR, "(ERROR) impossible to establish the quorum");
+		*tmp_files = head; 
                 return NULL; 
         } 
  
+	*tmp_files = head;
         fclose(fd); 
         F(formated_command); 
         F(salt); 
@@ -1149,9 +1193,6 @@ int wait_reply(int ctrl, const struct pam_user *user, const char *command_file)
 			
 				log_message(LOG_NOTICE, "user %s validated the command", user_n->name);	
 				fprintf(stdout, "user %s validated the command\r\n", user_n->name);				
-
-				/* remove encrypted_file */
-
 			}
 
 		} else { 
@@ -1159,10 +1200,11 @@ int wait_reply(int ctrl, const struct pam_user *user, const char *command_file)
 		}
 
 
-		if (encrypted_file) {}
-			/* remove encrypted_file */		
+		if (encrypted_file) {
+			unlink(encrypted_file);
+			F(encrypted_file);
+		}
 
-		F(encrypted_file);
 		if (user_n)				
 			F(user_n->name);
 		F(user_n);
@@ -1174,10 +1216,11 @@ int wait_reply(int ctrl, const struct pam_user *user, const char *command_file)
 
 	} /* while */
 
-	if (encrypted_file) {}
-			/* remove encrypted_file */		
+	if (encrypted_file) {
+		unlink(encrypted_file);
+		F(encrypted_file);
+	}
 
-	F(encrypted_file);
 	if (user_n)				
 		F(user_n->name);
 	F(user_n);
