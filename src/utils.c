@@ -75,15 +75,16 @@ char
                 length += strlen(command_line[i]) + 1; /* +1 for sapce and \'0' ending */ 
                 i++; 
         } while (command_line[i] != NULL); 
- 
+
         formated_command = calloc(length, sizeof(char)); 
+
         if (formated_command == NULL) 
                 return NULL; 
  
         length = 0; 
         i = 0; 
- 
-        do { 
+        
+	do { 
                 strncpy(formated_command+length, command_line[i], strlen(command_line[i])); 
                 length += strlen(command_line[i]) + 1; 
                 formated_command[length-1] = ' '; 

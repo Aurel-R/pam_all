@@ -12,8 +12,8 @@
 #include <openssl/evp.h>
 #include <openssl/rsa.h>
 #include <openssl/pem.h>
-
 #include <openssl/sha.h>
+#include <openssl/objects.h>
 
 #define NAME	"validate"
 
@@ -149,9 +149,6 @@ void terminate(pam_handle_t *pamh, struct command_info *cmd, int status)
         	fprintf(stderr, "release pam error (%d)\n", retval);
 		status = retval;
     	}
-
-	if (cmd == NULL)
-		exit(status);
 
 	while ((item = cmd) != NULL) {
 		F(item->cmd_file);
@@ -553,7 +550,7 @@ int sign(struct pam_user *user, struct command_info *item, int pid)
 	unsigned char *seed = NULL;
 	char *file_name = NULL;
 	FILE *fd;
-	unsigned char *signed_data = NULL;
+	unsigned char *signed_data = NULL, hash[20];
 	unsigned int signed_data_len = 0;
 	EVP_PKEY *priv_key = NULL;
 	char *priv_file_name = NULL; 
@@ -608,7 +605,23 @@ int sign(struct pam_user *user, struct command_info *item, int pid)
 		return 1;
 	}
 
-	
+	if (!SHA1((const unsigned char *)item->salted_cmd, strlen(item->salted_cmd), hash)) {
+		fprintf(stderr, "can not hash data (%s)\n", item->cmd);
+		EVP_PKEY_free(priv_key);
+		RSA_free(rsa);
+		F(signed_data);
+		return 1;
+	}
+
+	if (!RSA_sign(NID_sha1, hash, sizeof(hash), signed_data, &signed_data_len, rsa)) {
+		fprintf(stderr, "can not sign data (%s)\n", item->cmd);
+		EVP_PKEY_free(priv_key);
+		RSA_free(rsa);
+		F(signed_data);
+		return 1;
+	}
+
+/*	
 	if (!RSA_sign(NID_sha1, (const unsigned char *)item->salted_cmd, strlen(item->salted_cmd), signed_data, &signed_data_len, rsa)) {
 		fprintf(stderr, "can not sign data (%s)\n", item->cmd);
 		EVP_PKEY_free(priv_key);
@@ -616,7 +629,7 @@ int sign(struct pam_user *user, struct command_info *item, int pid)
 		F(signed_data);
 		return 1;
 	} 
-
+*/
 	seed = alea(EN_CMD_FILENAME_LEN, (unsigned char *)CARAC); 
 
 	if (seed == NULL) {	
@@ -718,7 +731,7 @@ int main(int argc, char **argv)
 		return 1;
 
 	pamc.conv = &converse;
-	if ((retval = pam_start(NAME, username, &pamc, &pamh)) != PAM_SUCCESS) {
+	if ((retval = pam_start(NAME, username, &pamc, &pamh)) != PAM_SUCCESS) {	
 		fprintf(stderr, "pam start error (%d)\n", retval);
 		return retval;
 	}

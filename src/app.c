@@ -16,6 +16,7 @@
 #include <openssl/ssl.h>
 #include <openssl/evp.h>
 #include <openssl/rsa.h>
+#include <openssl/sha.h>
 #include <openssl/err.h>
 #include <openssl/pem.h>
 #include <openssl/rand.h>
@@ -113,17 +114,14 @@ unlink_tmp_files(struct tempory_files *tmp_files)
 {
 	struct tempory_files *item;
 
-	if (tmp_files == NULL)
-		return;
-
 	while ((item = tmp_files) != NULL) {
 		if (item->name) {
 			unlink(item->name);
-			log_message(LOG_DEBUG, "-DE- UNLINK :  %s", item->name);
 			F(item->name);
-			tmp_files = tmp_files->next;
-			F(item);
 		}
+		
+		tmp_files = tmp_files->next;
+		F(item);
 	}
 }
  
@@ -760,7 +758,7 @@ char
         if ((formated_command = format_command_line((const char **)command)) == NULL) { 
                 log_message(LOG_ERR, "(ERROR) format the command line error"); 
                 return NULL; 
-        } 
+        }
         
 	if (ctrl & PAM_DEBUG_ARG) 
         	log_message(LOG_DEBUG, "(DEBUG) formated command : %s", formated_command);       
@@ -1067,6 +1065,7 @@ char
 	FILE *fd;
 	int len, ret;
 	char *buffer;
+	unsigned char hash[20];
 
 	RSA *rsa = RSA_new();
 
@@ -1094,12 +1093,25 @@ char
 	ret=fread(buffer, sizeof(*buffer), len, fd); 
 	fclose(fd);
 
+	if (!SHA1((const unsigned char *)data_buf, strlen(data_buf), hash)) {
+		log_message(LOG_ERR, "(ERROR) hash data for verify");
+		RSA_free(rsa);
+		return NULL;
+	}
+
+	if (!RSA_verify(NID_sha1, hash, sizeof(hash), (unsigned char *)buffer, ret, rsa)) {	
+		log_message(LOG_ERR, "(ERROR) impossible to verify the singature of file '%s'", file);
+		RSA_free(rsa);
+		return NULL;
+	}	
+
+/*
 	if (!RSA_verify(NID_sha1, (const unsigned char *)data_buf, strlen(data_buf), (unsigned char *)buffer, ret, rsa)) {	
 		log_message(LOG_ERR, "(ERROR) impossible to verify the singature of file '%s'", file);
 		RSA_free(rsa);
 		return NULL;
 	}
-
+*/
 	return data_buf;
 }
 

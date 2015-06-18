@@ -12,16 +12,18 @@ new ?
 groupName: Quorum || OtherGroupName :user5,user6,user7
 
 V1
-   - long command sign
-   - remove tmp files
-   - new name
-   - new architecture
+   - version numbering (x.y.z)
+   - list of changes (historic)  
+
+   - new name (quorum-validate) (pam_quorum)
    - make
    - make install (arch + groups conf example)
    - rm *test*
    - README
-   - comments
    - GPL licence (+BSD (converse))
+
+   - configure
+   - comment
    - MAN (.8)
    - Doxygen
 
