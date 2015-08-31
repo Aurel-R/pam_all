@@ -1,3 +1,23 @@
+/*
+ * Copyright (C) 2015 Aurélien Rausch <aurel@aurel-r.fr>
+ * 
+ * This file is part of pam_all.
+ *
+ * pam_all is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 2 of the License, or
+ * (at your option) any later version.
+ *
+ * pam_all is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with pam_all.  If not, see <http://www.gnu.org/licenses/>.
+ */
+
+
 #include <stdlib.h> 
 #include <stdio.h> 
 #include <string.h> 
@@ -8,29 +28,7 @@
 #include <syslog.h> 
 #include <stdarg.h> 
 #include <errno.h>
-
-#include "config.h"
-
-/*
- * Parse all arguments. If debug option is found 
- * in configuration file, set the verbose mode 
- */
-int
-_pam_parse(int argc, const char **argv)
-{
-        int i, ctrl = 0;
-
-	#ifdef DEBUG
-		ctrl |= PAM_DEBUG_ARG;
-	#else
-        	for (i=0; i<argc; i++) {
-                	if (!strncmp(argv[i], "debug", 5))
-                        	ctrl |= PAM_DEBUG_ARG;
-        	}
-	#endif
-
-        return ctrl;
-}
+#include "utils.h"
 
 
 /* Send log to syslog */

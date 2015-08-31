@@ -17,26 +17,19 @@
  * along with pam_all.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-
 #ifndef H_UTILS_H
 #define H_UTILS_H
-
-/*  
- * Free and set NULL 
- */ 
-#define F(x) do {	\
-	if (x) { free(x), x = NULL; }	\
-	} while (0)
 
 #define CARAC           "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz"
 #define RANDOM_FILE	"/dev/urandom"
 
-#define NAME "pam_all.so"
+#define F(x) do {	\
+	if (x) { free(x), x = NULL; }	\
+	} while (0)
 
-void log_message(int level, char *msg, ...); 
-int  passwd_callback(char *pcszBuff, int size, int rwflag, void *pPass); 
-char *format_command_line(const char **command_line); 
-char *is_a_symlink(char *file);
-unsigned char *alea(size_t len, unsigned char *table);
+
+unsigned char *alea(size_t len, unsigned char *table); 
+int insert(FILE *fd, const char *data, int data_len, long pos);
+int passwd_callback(char *pcszBuff, int size, int rwflag, void *pPass);
 
 #endif

@@ -1,47 +1,21 @@
-/* ! @Todo
-
-V3
-- conf file, edit = ok, but others admins can't check the modifcations in file after validate :
-in session open, cp fic and open it
-in session close,create patch and  get the validatation to others admins, and appli patch if ok
-
-V2
--Actual group :
-groupName:Quorum:user1,user2,user3,user4
-new ? 
-groupName: Quorum || OtherGroupName :user5,user6,user7
-
-V1
-   - version numbering (x.y.z)
-   - list of changes (historic)  
-
-   - new name (quorum-validate) (pam_quorum)
-   - make
-   - make install (arch + groups conf example)
-   - rm *test*
-   - README
-   - GPL licence (+BSD (converse))
-
-   - configure
-   - comment
-   - MAN (.8)
-   - Doxygen
-
-   - PAMH CONTEXT SAVE
-
-   - freeing variadic macro
-   - Try to encrypt with OLDAUTHTOKEN 
-   - macro display message
-   - lock command file when read
-
-   - make special app for give a HCI to edit GRP_FILE 
-
-   - get ctrl+c + othersig (sigterm stps etc... for no execute the command) 
-   - static lib
-   - cut src & header files properly  
-
- @Todo ! */
-
+/*
+ * Copyright (C) 2015 Aurélien Rausch <aurel@aurel-r.fr>
+ * 
+ * This file is part of pam_all.
+ *
+ * pam_all is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 2 of the License, or
+ * (at your option) any later version.
+ *
+ * pam_all is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with pam_all.  If not, see <http://www.gnu.org/licenses/>.
+ */
 
 #define PAM_SM_ACCOUNT
 #define PAM_SM_AUTH
@@ -61,12 +35,12 @@ V1
 #include <stdarg.h>
 #include <errno.h>
 #include <pwd.h>
-#include <crypt.h>
-#include <shadow.h>
 #include <signal.h>
 #include <sudo_plugin.h>
 #include <openssl/ssl.h> 
+#include <openssl/evp.h>
 #include <openssl/rsa.h>
+#include <openssl/sha.h>
 #include <openssl/err.h>
 #include <openssl/pem.h>
 #include <openssl/rand.h>
@@ -74,9 +48,44 @@ V1
 
 #define __dso_public __attribute__((__visibility__("default")))
 
-#include "config.h"
+#include "pam.h"
 #include "utils.h"
-#include "app.h"
+#include "crypto.h"
+
+static char **command; /* to get the command via sudo */
+static char **command_cp; /* original command before formated */
+
+/* local function */
+static int _pam_parse(int argc, const char **argv);
+static int _pam_terminate(pam_handle_t *pamh, int status);
+
+
+/*
+ * Parse all arguments. If debug option is found 
+ * in configuration file, set the verbose mode 
+ */
+static int
+_pam_parse(int argc, const char **argv)
+{
+        int i, ctrl = 0; 
+
+	#ifdef DEBUG
+		ctrl |= PAM_DEBUG_ARG;
+	#else	
+	
+       		for (i=0; i<argc; i++) {
+               		if (!strncmp(argv[i], "debug", 5))
+                       		ctrl |= PAM_DEBUG_ARG;
+		else {
+			log_message(LOG_ERR, "(ERROR) unknow option: %s", argv[i]);
+		}
+       	}
+	
+	#endif
+
+        return ctrl;
+}
+
 
 
 /* authentication management  */
@@ -87,25 +96,23 @@ int pam_sm_authenticate(pam_handle_t *pamh, int flags, int argc, const char **ar
 	struct pam_user *user;
 	const void *service_name = NULL;
 
-	user = malloc(sizeof(*user)); /* free in clean() */
-	
-	if (user == NULL)
-		return PAM_SYSTEM_ERR;
-
-	/*	
-	 * Get if debug mod is true during compilation or 
-	 * if it was indicated in config file of PAM
-	 */
 	if ((ctrl = _pam_parse(argc, argv)) & PAM_DEBUG_ARG) 
-		log_message(LOG_DEBUG, "(DEBUG) debug mod is set on for %s", __func__);
+		log_message(LOG_DEBUG, "(DEBUG) debug mod is set for %s", __func__);
 
 
 	if ((retval = pam_get_item(pamh, PAM_SERVICE, &service_name)) != PAM_SUCCESS || !service_name) {
                 log_message(LOG_ERR, "(ERROR) can not determine the service");
-                return retval;
+                return PAM_AUTH_ERR;
         }    
 
-	log_message(LOG_INFO, "(INFO) %s [auth] was called from '%s' service", NAME, service_name);
+	if (ctrl & PAM_DEBUG_ARG) 
+		log_message(LOG_DEBUG, "(DEBUG) %s [auth] was called from '%s' service", NAME, service_name);
+	
+
+	user = malloc(sizeof(*user)); /* free in clean() */
+	
+	if (user == NULL)
+		return PAM_SYSTEM_ERR;
 
 	/* 
 	 * Fill the user structure 
@@ -118,25 +125,52 @@ int pam_sm_authenticate(pam_handle_t *pamh, int flags, int argc, const char **ar
 	}
 
        /*
-	* Get the group for user and set
-	* his keys if necessary
+	* Set user group
 	*/
-	if ((retval = group_authenticate(ctrl, user)) != PAM_SUCCESS) {
+	if ((retval = group_authenticate(ctrl, user)) != PAM_SUCCESS &&
+	     retval != NO_CONF && retval != BAD_CONF) {
 		log_message(LOG_INFO, "(INFO) can not identify the user %s", user->name);
 		return retval;
 	}
+
+	if (retval == NO_CONF || retval == BAD_CONF) {
+		if ((retval = pam_set_data(pamh, STATUS, "WW", NULL)) != PAM_SUCCESS) {
+			log_message(LOG_ERR, "(ERROR) set status for user %s error: %m", user->name);
+			return retval;
+		} 
+		
+		return PAM_SUCCESS;
+	} else {
+		if ((retval = pam_set_data(pamh, STATUS, "OK", NULL)) != PAM_SUCCESS) {
+			log_message(LOG_ERR, "(ERROR) set status for user %s error: %m", user->name);
+			return retval;
+		}	
+	}
+
+	SSL_library_init(); /* always returns 1 */
+
+	/* 
+	 * check his key pair (create if necessary) 
+	 */
+	if ((retval = verify_user_entry(user, 0))) {
+		log_message(LOG_ERR, "(ERROR) can not check key pair for user %s", user->name);	
+		return retval;
+	}
+
 
        /*
 	* Now we have to set current user data for the session management.
 	* pam_set_data provide data for him and other modules too
 	*/
 	if ((retval = pam_set_data(pamh, DATANAME, user, clean)) != PAM_SUCCESS) {
-		log_message(LOG_ALERT, "(ERROR) set data for user %s error: %m", user->name);
+		log_message(LOG_ERR, "(ERROR) set data for user %s error: %m", user->name);
 		return retval;
 	}
 
 	return PAM_SUCCESS;
 }
+
+
 
 PAM_EXTERN
 int pam_sm_setcred(pam_handle_t *pamh, int flags, int argc, const char **argv){
@@ -184,7 +218,8 @@ int pam_sm_chauthtok(pam_handle_t *pamh, int flags, int argc, const char **argv)
 	 * the module was call after other module in PAM stack
 	 */
 	if ((retval = pam_get_item(pamh, PAM_AUTHTOK, &passwd)) != PAM_SUCCESS) {
-		log_message(LOG_ERR, "(ERROR) can not determine the password: %m");
+		log_message(LOG_ERR, "(ERROR) impossible to get the password for user %s: %m", user->name);
+		F(user);
 		return retval;
 	}	
 
@@ -194,8 +229,13 @@ int pam_sm_chauthtok(pam_handle_t *pamh, int flags, int argc, const char **argv)
 		SSL_library_init(); /* always returns 1 */
 		if ((retval = verify_user_entry(user, 1))) {
 			log_message(LOG_ERR, "(ERROR) update key pairs error");
+			F(user);
 			return retval;
 		}
+	} else {
+		log_message(LOG_ERR, "(ERROR) can not determine the password for user %s", user->name);
+		F(user);
+		return PAM_AUTHTOK_ERR;
 	}
 
 	F(user);
@@ -212,15 +252,31 @@ int pam_sm_open_session(pam_handle_t *pamh, int flags, int argc, const char **ar
 	char *file_name, *ln;
 	const void  *service_name = NULL;
 	struct tempory_files *tmp_files = NULL;
+	char *dst_command = NULL;
+	const void *status;
 	
 	if ((ctrl = _pam_parse(argc, argv)) & PAM_DEBUG_ARG) 
-		log_message(LOG_DEBUG, "(DEBUG) debug mod is set on for %s", __func__);
+		log_message(LOG_DEBUG, "(DEBUG) debug mod is set for %s", __func__);
+
+	
+	if (pam_get_data(pamh, STATUS, &status) != PAM_SUCCESS) {
+		log_message(LOG_ERR, "(ERROR) impossible to recover authentification status");
+		return _pam_terminate(pamh, EXIT);
+	}
+
+	if (!strncmp((const char *)status, "WW", 2))
+		return PAM_SUCCESS;
+	else if (!strncmp((const char *)status, "OK", 2)) {
+		/* normal result */
+	} 
+	else return _pam_terminate(pamh, EXIT); /* normaly impossible */	
+
 
 	/*
 	 * getting informations save in authentication
 	 */
 	if ((user = get_data(pamh)) == NULL) {
-		log_message(LOG_ERR, "(ERROR) impossible to recover the data");
+		log_message(LOG_ERR, "(ERROR) impossible to recover authentification data");
 		return _pam_terminate(pamh, EXIT);
 	}
 
@@ -229,10 +285,11 @@ int pam_sm_open_session(pam_handle_t *pamh, int flags, int argc, const char **ar
                 return _pam_terminate(pamh, EXIT);
         }    
 
-	log_message(LOG_INFO, "(INFO) %s [session] was called from '%s' service", NAME, service_name);
+	if (ctrl & PAM_DEBUG_ARG)
+		log_message(LOG_DEBUG, "(DEBUG) %s [session] was called from '%s' service", NAME, service_name);
 
 	/*
-	 * getting if the service is the 'validate' command
+	 * getting if the service is the 'all-validate' command
 	 */
         if (!strncmp(service_name, ASSOCIATED_SERVICE, strlen(ASSOCIATED_SERVICE))) {
 		if (ctrl & PAM_DEBUG_ARG)
@@ -271,13 +328,8 @@ int pam_sm_open_session(pam_handle_t *pamh, int flags, int argc, const char **ar
 	 * a command, it's not necessary to create here
 	 * file too
 	 */
-	if (strncmp(command[0], "command=/usr/bin/validate", 25) == 0)
+	if (strncmp(command[0], "command=/usr/bin/all-validate", 29) == 0)
 		return PAM_SUCCESS;
-
-	/* FOR TEST*/
-	if (strcmp(command[0], "command=/home/arausch/pam-shamir_V1/pam-shamir/src/validate") == 0) /* for test */
-		return PAM_SUCCESS;
-	/* FOR TEST */
 
 	log_message(LOG_NOTICE, "starting request...");
 	fprintf(stdout, "strating request\r\n");
@@ -287,10 +339,11 @@ int pam_sm_open_session(pam_handle_t *pamh, int flags, int argc, const char **ar
 	/* create the command file for other users of 
 	 * the group
 	 */
-	if ((file_name = create_command_file(ctrl, user, &tmp_files)) == NULL) {
+	if ((file_name = create_command_file(ctrl, user, command, &dst_command, &tmp_files)) == NULL) {
 		log_message(LOG_ERR, "(ERROR) can not create command file: %m");
 		return _pam_terminate(pamh, EXIT);
 	}
+
 
 	fprintf(stdout, "waiting for authorization...\r\n");
 	log_message(LOG_INFO, "(INFO) waiting for authorization...");
@@ -299,7 +352,7 @@ int pam_sm_open_session(pam_handle_t *pamh, int flags, int argc, const char **ar
 	 * other users of the group (blocking 
 	 * function)
 	 */	
-	retval = wait_reply(ctrl, user, file_name);
+	retval = wait_reply(ctrl, user, file_name, dst_command);
 
 	switch (retval) { 
 		case SUCCESS: break; /* the command was validated */
@@ -319,9 +372,11 @@ int pam_sm_open_session(pam_handle_t *pamh, int flags, int argc, const char **ar
 	
 	
 	unlink_tmp_files(tmp_files);
-	unlink(file_name); 	
+	if (unlink(file_name) == -1)
+		log_message(LOG_ERR, "(ERROR) impossible to remove '%s' file : %m", file_name); 	
+	F(file_name);
 
-	if (retval != 0) /* if the command was not validated */
+	if (retval != PAM_SUCCESS) /* if the command was not validated */
 		return _pam_terminate(pamh, EXIT);
 	
 
@@ -344,7 +399,6 @@ int pam_sm_open_session(pam_handle_t *pamh, int flags, int argc, const char **ar
 
 /*	if (flag) */ /* check if edit file flag is up (if yes return error) (for V3) */	
 
-	F(file_name);
 	return PAM_SUCCESS;
 }
 
@@ -365,6 +419,26 @@ int pam_sm_close_session(pam_handle_t *pamh, int flags, int argc, const char **a
 	return PAM_SUCCESS;
 }
 
+
+/*
+ * sudoers does not detect if session module failed.
+ * (cause AUTH_FAILURE and AUTH_FATAL don't have the same value in source code)
+ * I have reported the problem and a patch is apply for the
+ * next stable version.
+ */ 
+static int 
+_pam_terminate(pam_handle_t *pamh, int status) 
+{
+	int ret;
+
+	pam_set_data(pamh, DATANAME, NULL, NULL);
+	log_message(LOG_NOTICE, "session closed");
+	F(command);
+	F(command_cp);
+	ret = raise(status);
+	return ret;
+}
+
 /*
  * this function is called by sudo directly.
  * It is used to obtain the command line
@@ -379,7 +453,7 @@ io_open(unsigned int version, sudo_conv_t conversation,
 	log_message(LOG_NOTICE, "io_open");
 	int i;
 
-	/* free in io_close */
+	/* free in io_close or _pam_terminate if necessary */
 	command = malloc((argc+1)*sizeof(char *));
 	command_cp = malloc((argc+1)*sizeof(char *));
 

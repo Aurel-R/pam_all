@@ -1,14 +1,33 @@
-#ifndef H_CONFIG_H
-#define H_CONFIG_H
+/*
+ * Copyright (C) 2015 Aurélien Rausch <aurel@aurel-r.fr>
+ * 
+ * This file is part of pam_all.
+ *
+ * pam_all is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 2 of the License, or
+ * (at your option) any later version.
+ *
+ * pam_all is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with pam_all.  If not, see <http://www.gnu.org/licenses/>.
+ */
+
+#ifndef H_PAM_H
+#define H_PAM_H
 
 #define UNUSED __attribute__((unused))
-#define NAME     "pam_shamir.so"
-#define ASSOCIATED_SERVICE	"validate"
+#define NAME     "pam_all.so"
+#define ASSOCIATED_SERVICE	"all-validate"
 
 /*
  * Strange bug...
  */
-//#define PATH_MAX	1
+#define PATH_MAX	4096	
 
 /* 
  * Contains the groups of shamir. 
@@ -16,27 +35,27 @@
  * user can't be in two different 
  * groups. 
  */ 
-#define GRP_FILE "/etc/shared/groups" 
+#define GRP_FILE "/etc/security/pam_all.d/groups" 
  
 /* 
  * Contains the private and public  
  * users key.  
  */  
-#define USR_DIR  "/etc/shared/users/" 
+#define USR_DIR  "/etc/security/pam_all.d/users/" 
  
 /* 
  * Contains many files with one encrypted  
  * command and his options.  
  */ 
-#define CMD_DIR  "/var/lib/shamir/" 
-#define EN_CMD_DIR "/var/lib/shamir/tmp/" 
+#define CMD_DIR  "/var/lib/pam_all/" 
+#define EN_CMD_DIR "/var/lib/pam_all/tmp/" 
 #define EN_CMD_FILENAME_LEN 16 /* in bytes */ 
  
 #define MAX_LINE_LEN 256 /* Maximum line lenght for groups file */ 
 #define MAX_USR_GRP  20  /* Maximum users per group */ 
 #define LINE_LEN     512 /* Maximum line lenght for command file */
 
-#define PAM_DEBUG_ARG       0x0001 /* debug mod  */
+#define PAM_DEBUG_ARG       		0x0001 /* debug mod  */
 
 #define PAM_EX_DATA	5  /* specific conversation protocol */
 #define ACKNOWLEDGE	"OK" /* confirm conversation */
@@ -50,9 +69,6 @@
 #define NO_USR_GRP      1 /* the user haven't group (authentication failed) */ 
 #define NO_CONF         2 /* the group file is not configured (authentication success) */ 
 #define BAD_CONF        3 /* bad configuration for group file (authentication success) */ 
- 
-#define ENTRY           0 /* user have key */ 
-#define NO_ENTRY        1 /* no key configured */ 
  
 #define ERR             1 /* error encountered */ 
 
@@ -69,25 +85,9 @@
  * exchange data into the module 
  */ 
 #define DATANAME "current_user" 
+#define STATUS "config_status"
  
-#define BITS            2048 /* for RSA key */ 
-#define SALT_SIZE       16 /* in bytes */ 
-#define RANDOM_FILE     "/dev/urandom" /* file used for random data */ 
-#define CARAC           "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz" 
-#define AES_KEY_LEN	32 /* in Bytes (256 bits) */
-#define AES_IV_LEN	16 /* in Bytes (128 bits) */
-#define MAX_BUF		1024
-
 #define EXIT		9	
- 
-/* 
- * The default prompt used to get 
- * password 
- */ 
-#define passwd_prompt	 "Unix password: " 
- 
-char **command; /* to get the command via sudo */ 
-char **command_cp; /* orginal command before formatted */
 
 /* 
  * One user can have a single 
@@ -118,5 +118,17 @@ struct tempory_files {
 	struct tempory_files *next;
 };
  
+ 
+void clean(pam_handle_t *pamh UNUSED, void *data, int error_status UNUSED);
+const struct pam_user *get_data(const pam_handle_t *pamh);
+int send_data(int ctrl, pam_handle_t *pamh, void *data); 
+void unlink_tmp_files(struct tempory_files *tmp_files);
+int get_group(struct pam_user *user);
+char *create_command_file(int ctrl, const struct pam_user *user, char **cmd, char **dst_cmd, struct tempory_files **tmp_files);
+int user_authenticate(pam_handle_t *pamh, int ctrl, struct pam_user *user);
+int group_authenticate(int ctrl, struct pam_user *user);
+int wait_reply(int ctrl, const struct pam_user *user, const char *command_file, char *dst_cmd);
+
+
 #endif
 

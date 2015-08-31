@@ -1,0 +1,78 @@
+.\" Copyright (c) 2015, Rausch Aurélien
+.\"
+.\" %%%LICENSE_START(GPLv2+_DOC_FULL)
+.\" This is free documentation; you can redistribute it and/or
+.\" modify it under the terms of the GNU General Public License as
+.\" published by the Free Software Foundation; either version 2 of
+.\" the License, or (at your option) any later version.
+.\"
+.\" The GNU General Public License's references to "object code"
+.\" and "executables" are to be interpreted as the output of any
+.\" document formatting or typesetting system, including
+.\" intermediate and printed output.
+.\"
+.\" This manual is distributed in the hope that it will be useful,
+.\" but WITHOUT ANY WARRANTY; without even the implied warranty of
+.\" MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+.\" GNU General Public License for more details.
+.\"
+.\" You should have received a copy of the GNU General Public
+.\" License along with this manual; if not, see
+.\" <http://www.gnu.org/licenses/>.
+.\" %%%LICENSE_END
+.TH "ALL-VALIDATE" "8" "25/08/2105" "Linux-PAM Manual" "Linux\-PAM Manual"
+.SH NAME
+all-validate \- Validate a command awaiting of \fBpam_all\fR(8) module 
+.SH SYNOPSIS
+.B \fBall-validate\fR 
+[\fB-h\fR]
+[\fB-\-check\fR]
+[\fB-\-list\fR]
+[\fIPID\fR [\fIPID_1 PID_2 PID_3\fR \&.\&.\&.]] 
+.SH DESCRIPTION
+.PP
+\fIall-validate\fR work with \fBsudo(ers)\fR and \fBpam_all\fR(8). It sign an awaiting command.
+
+.SH OPTIONS
+.PP
+\fB-h\fR, \fB-\-help\fR
+.RS 4
+Displays help message.
+.RE
+.PP
+\fB-\-check\fR
+.RS 4
+generate/check user key pair.
+.RE
+.PP
+\fB-l\fR, \fB-\-list\fR
+.RS 4
+Print awaiting command(s).
+.RE
+.PP
+\fIPID\fR
+.RS 4
+Validate the command by his pid.
+.RE
+
+.SH "RETURN VALUES"
+.PP
+1
+.RS 4
+Applicaton returned an error\&.
+.RE
+.PP
+0
+.RS 4
+Everything was successful\&.
+.RE
+.SH "SEE ALSO"
+.PP
+\fBpam_all\fR(8),
+\fBpam.d\fR(5),
+\fBpam\fR(8),
+\fBsudo\fR(8),
+\fBsudoers\fR(5),
+.SH "AUTHOR"
+.PP
+all-validate was written by Rausch Aurélien\&.

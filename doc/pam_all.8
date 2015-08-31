@@ -1,0 +1,93 @@
+.\" Copyright (c) 2015, Rausch Aurélien
+.\"
+.\" %%%LICENSE_START(GPLv2+_DOC_FULL)
+.\" This is free documentation; you can redistribute it and/or
+.\" modify it under the terms of the GNU General Public License as
+.\" published by the Free Software Foundation; either version 2 of
+.\" the License, or (at your option) any later version.
+.\"
+.\" The GNU General Public License's references to "object code"
+.\" and "executables" are to be interpreted as the output of any
+.\" document formatting or typesetting system, including
+.\" intermediate and printed output.
+.\"
+.\" This manual is distributed in the hope that it will be useful,
+.\" but WITHOUT ANY WARRANTY; without even the implied warranty of
+.\" MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+.\" GNU General Public License for more details.
+.\"
+.\" You should have received a copy of the GNU General Public
+.\" License along with this manual; if not, see
+.\" <http://www.gnu.org/licenses/>.
+.\" %%%LICENSE_END
+.TH "PAM_ALL" "8" "25/08/2105" "Linux-PAM Manual" "Linux\-PAM Manual"
+.SH NAME
+pam_all \- Module for validation by administrators quorum 
+.SH SYNOPSIS
+.B \fBpam_all\&.so\fR 
+[debug]
+.SH DESCRIPTION
+.PP
+In shell,
+\fIpam_all\fR provide a system of authentification in an administrators group. When an user start a command (via
+\fBsudo\fR),  
+\fIpam_all\fR
+puts the user awaiting approval from the other administrators of the group before running the command.   
+.PP
+\fIpam_all\fR is based on an encryption system, where each user have his key pair. The command is salted and encrypted with a random AES key (secured by the RSA public key of each user in the group).
+When an user validate the command with \fBall-validate\fR(8)\&, command is signed and \fIpam_all\fR return PAM_SUCCESS (when the quorum is reached).
+.SH OPTIONS
+.PP
+\fBdebug\fR
+.RS 4
+Turns on debugging messages sent to
+\fBsyslog\fR(3)\&.
+.RE
+.SH "MODULE TYPES PROVIDED"
+.PP
+The
+\fBauth\fR
+,
+\fBsession\fR
+and
+\fBpassword\fR
+module types are provided\&.
+.SH "RETURN VALUES"
+.PP
+PAM_AUTH_ERR
+.RS 4
+The module was not able to authentificate the user in an administrator group\&.
+.RE
+.PP
+PAM_SUCCESS
+.RS 4
+Everything was successful\&.
+.RE
+.PP
+PAM_SESSION_ERR
+.RS 4
+The request timeout was exceeded or the command is not validate by other administrators\&.
+.SH "FILES"
+.PP
+/etc/security/pam_all.d/\&.\&.\&.
+.RS 4
+contains the group file and the users' keys
+.RE
+.PP
+/var/lib/pam_all/\&.\&.\&.
+.RS 4
+contains the tmp encrypted files
+.RE
+.SH "NOTE"
+.PP
+View \fBINSTALL\fR for installation and \fBREADME\fR for configuration
+.SH "SEE ALSO"
+.PP
+\fBall-validate\fR(8),
+\fBpam.d\fR(5),
+\fBpam\fR(8),
+\fBsudo\fR(8),
+\fBsudoers\fR(5),
+.SH "AUTHOR"
+.PP
+pam_all was written by Rausch Aurélien\&.

@@ -1,25 +1,31 @@
-all : pam_shamir.so validate
-
-#-lssl front -lcrypto ?
-pam_shamir.so : pam_shamir.o utils.o app.o
-	gcc -shared -o pam_shamir.so pam_shamir.o utils.o app.o -lpam -lcrypt -lcrypto -lssl
-
-pam_shamir.o : pam_shamir.c config.h utils.h app.h 
-	gcc -fPIC -Wall -c pam_shamir.c 
-
-app.o : app.c app.h config.h utils.h
-	gcc -fPIC -Wall -c app.c
-
-utils.o : utils.c utils.h 
-	gcc -fPIC -Wall -DDEBUG -c utils.c
+ifeq ($(DEBUG), yes)
+	VERBOSE=-DDEBUG
+else
+	VERBOSE=
+endif
 
 
-validate : validate.o
-	gcc -o validate validate.o -lpam -lcrypto -lssl
-
-validate.o : validate.c
-	gcc -Wall -c validate.c
+all : $(MODULE)
 
 
-clean : 
-	rm *.o
+pam_all.so : pam_all.o pam.o utils.o crypto.o
+	$(CC) -shared -o $@ $^ $(MODULE_LIBS)
+
+pam_all.o : pam_all.c pam.h utils.h crypto.h
+	$(CC) -fPIC $(CFLAGS) $(VERBOSE) -c $<
+
+pam.o : pam.c pam.h utils.h crypto.h
+	$(CC) -fPIC $(CFLAGS) -c $<
+
+crypto.o : crypto.c crypto.h pam.h utils.h
+	$(CC) -fPIC $(CFLAGS) -c $<
+
+
+utils.o : utils.c utils.h
+	$(CC) -fPIC $(CFLAGS) -c $<
+
+
+clean :
+	rm *.o $(MODULE) 
+
+

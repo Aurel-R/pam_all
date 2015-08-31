@@ -1,0 +1,116 @@
+Copyright (C) 2015 Aurélien Rausch <aurel@aurel-r.fr>
+
+
+NOTE :
+======
+
+* This program is still in development. So, it should never be used in 
+production environnement. Else, make sure you can take the control of root user 
+(with su for example).
+
+* debug mod (with DEBUG flag or debug option) is very verbose. The logs are
+saved in /var/log/auth.log
+
+* See the INSTALL file.
+
+
+
+Pam_all philosophy
+===================
+Pam_all has been designed for system administrators to configure the access
+to the root privileges. Traditionally, when an user start an admin command, 
+he uses 'sudo' to get the administrator permissions. The problem with this
+solution is that it creates a single point of failure (all users can have the
+root privileges). The various problems of such system can be : 
+
+ INTERNAL :
+	- untrustworthy user
+ 
+ EXTERNAL :
+	- attack on the system
+	- attack on one system administrator 
+ 
+ ACCIDENTAL :
+	- error of configuration/administration
+
+
+Pam_all tries to correct some of these problems by proposing a common 
+authentification to an administrators group (based on a quorum). Now when an
+user execute a sudo command, it will not be executed until the other admins
+does not validate.
+ 
+
+Where to find pam_all ?
+=======================
+You can get pam_all on github: https://github.com/Aurel-R/pam_all
+A debian package will soon be available (with a mailing lists)
+
+
+New's
+======
+You can see the NEWS file for a list of major changes in module.
+Or, for more details, view the ChangeLog file.
+
+
+Mailing lists
+=============
+No mailing lists are available for v0.1. For the moment, use the principal
+maintainer email address for questions, bug reports, patch, etc. 
+(aurel@aurel-r.fr)
+
+
+Documentation
+=============
+See 'man 8 all-validate' and 'man 8 pam_all'.
+
+
+pam_all configuration
+=====================
+
+-- create administrator group -- 
+
+INFO : Add an user in sudo grp (in root) -> usermod -a -G sudo <UserName> (for each 
+members of administrator group)
+
+	1. create in root /etc/security/pam_all.d/groups file
+	2. chmod 600 /etc/security/pam_all.d/groups
+	3. edit file : (a special application will be developed to edit this 
+		       file)
+		
+		Groups file have to be like the file /etc/passwd:
+		- no space ' '
+		- no comment '#'
+		- no tabulation
+		- no empty line
+		
+		If an user is set in two differents groups, the first line with
+		him shall be kept.
+
+		This file have three columns: 
+		1st: the group name
+		2nd: the quorum (2 <= Q <= n  (Q=quorum n=number of users))
+		3rd: users list (separated by commas)
+
+		Example :
+			  admin:2:user1,user2,user3
+
+
+
+-- use ---
+	
+	1. All users must be connected to the server and run the command 
+	   'sudo all-validate --check' to generate their key pair.
+
+After that, an user can run an admin command : sudo ls -l
+
+Other users can see it with 'sudo all-validate -l' and validate the command
+with 'sudo all-validate <PID>'. When the quorum is reached, the command (ls -l)
+is executed.
+
+
+
+Bug reports
+============
+Use principal maintainer email address. (aurel@aurel-r.fr)
+
+

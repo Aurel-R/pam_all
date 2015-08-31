@@ -1,0 +1,102 @@
+#
+# Used if 'make install' return an error 
+#
+
+
+NOTE: I'll use autoconf and automake later.
+ 
+NOTE 2 : This program is still in development. So, it should never be used in
+production environnement. Else, make sure you can take the control of root user
+(with su for example).
+
+NOTE 3 : debug mod (with DEBUG flag or debug option) is very verbose. The logs 
+are saved in /var/log/auth.log
+
+NOTE 4 : See the README file for configuration.
+
+
+
+pam_all installation instructions
+=================================
+
+--- dependencies ---
+	1. install:
+		- libpam0g and libpam0g-dev
+		- libssl and libssl-dev
+
+--- secure your session ---
+	1. open an independent terminal
+	2. sudo bash
+	3. do not close it, it can save you ;-)
+
+
+
+On other terminal
+=================
+
+--- make directory --- (in root)
+	1. mkdir /etc/security/pam_all.d	(contains groups file)
+	2. mkdir /etc/security/pam_all.d/users	(contains users files)
+	3. mkdir /var/lib/pam_all		(contains temporary command files)
+	4. chmod 700 /var/lib/pam_all
+	5. mkdir /var/lib/pam_all/tmp		(contains other temporary command files)
+	6. chmod 700 /var/lib/pam_all/tmp
+
+
+--- install pam module --- 
+	1. make
+	2. copy src/pam_all.so in /lib/<your architecture>/security/ (in root)
+	3. chown root:root pam_all.so (in root)
+	4. chmod 644 pam_all.so  (in root)
+	5. ln -s /lib/<your architecture>/security/pam_all.so /usr/lib/sudo/shared.so (in root)
+	   NOTE : depend of your sudo version (/usr/local/libexec/sudo/shared.so)
+	6. copy app/all-validate in /usr/bin/ (in root)
+
+
+--- configure sudoers --- 
+	1. edit /etc/sudoers (sudo EDITOR=/usr/bin/vim visudo) :
+	
+	> - 	Defaults	env_reset
+	> + 	Defaults	env_reset,timestamp_timeout=0
+
+
+--- configure sudo ---
+	1. edit (or create) /etc/sudo.conf :
+
+	>	Plugin	sudoers_policy	sudoers.so
+	>	Plugin	sudoers_io	sudoers.so
+	> +	Plugin  shared_io	shared.so
+
+	
+--- configure pam ---
+	1 create /etc/pam.d/all-validate (adapt the module path):
+
+	> +	auth    required        pam_unix.so
+	> +	auth    required        /lib/<your architecture>/security/pam_all.so debug
+	> +	session required        /lib/<your architecture>/security/pam_all.so debug
+
+
+
+	2. edit /etc/pam.d/sudo :
+  
+	>	auth       required   pam_env.so readenv=1 user_readenv=0
+	>	auth       required   pam_env.so readenv=1 envfile=/etc/default/locale user_readenv=0
+	>	@include common-auth
+	> + 	auth       required     /lib/<your architecture>/security/pam_all.so debug 
+	>	@include common-account
+	> +	session required        /lib/<your architecture>/security/pam_all.so debug
+	>	@include common-session-noninteractive 
+	
+
+
+	3. edit /etc/pam.d/common-password :
+	
+	>	password	[success=2 default=ignore]	pam_unix.so obscure sha512
+	>	password	[success=1 default=ignore]	pam_winbind.so use_authtok try_first_pass
+	>	password	requisite			pam_deny.so
+	> +	password	required			/lib/<your architecture>/security/pam_all.so
+	>	password	required			pam_permit.so
+
+
+
+
