@@ -212,29 +212,9 @@ int decrypt_cmd_file(struct pam_user *user, struct command_info *command)
 			return 1;
 		}
 
-		//test
-		/*printf("\n\nRSA\n"); 
-		int j;
-		for(j=0; j<256; j++)
-			printf("-DE- %d [%c] [0x%X]\n",j,decrypted_rsa_data[j], decrypted_rsa_data[j]);
-		printf("\n\n\n");*/
-		//test
-
 		strncpy(aes_file, decrypted_rsa_data, len);
 		strncpy(key, decrypted_rsa_data+len, AES_KEY_LEN);
 		strncpy(iv, decrypted_rsa_data+len+AES_KEY_LEN, AES_IV_LEN);
-
-		// test
-		/*printf("\n\n\nAES_FILE = (%s)\n", aes_file);
-		int i;
-		printf("\nKEY = ");
-		for (i=0; i<AES_KEY_LEN; i++)
-			printf("(%d[%X]) - ", i, key[i]);
-		printf("\n\nIV = ");
-		for(i=0; i<AES_IV_LEN; i++)
-			printf("(%d[%X]) - ", i, iv[i]);
-		printf("\n\n\n");*/
-		// test
 
 		command->salted_cmd = aes_decrypt(aes_file, key, iv);
 
@@ -332,15 +312,6 @@ int sign(struct pam_user *user, struct command_info *item, int pid)
 		return 1;
 	}
 
-/*	
-	if (!RSA_sign(NID_sha1, (const unsigned char *)item->salted_cmd, strlen(item->salted_cmd), signed_data, &signed_data_len, rsa)) {
-		fprintf(stderr, "can not sign data (%s)\n", item->cmd);
-		EVP_PKEY_free(priv_key);
-		RSA_free(rsa);
-		F(signed_data);
-		return 1;
-	} 
-*/
 	seed = alea(EN_CMD_FILENAME_LEN, (unsigned char *)CARAC); 
 
 	if (seed == NULL) {	

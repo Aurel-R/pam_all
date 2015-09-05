@@ -21,7 +21,7 @@ INSTALL_OPT=-v -g 0 -o 0
 MODULE_DOC=doc/pam_all.8
 APP_DOC=doc/all-validate.8
 #until configure file...
-ARCH:=/lib/`ls /lib | grep gnu`
+ARCH:=`find /lib -name "pam_unix.so" -exec dirname {} \;`
 SUDO_PLUGIN_PATH=/usr/local/libexec/sudo
 SUDO_PLUGIN_PATH_1=/usr/lib/sudo
 SUDO_PLUGIN=shared.so
@@ -51,9 +51,9 @@ install-doc :
 	# add 'mandb' if necessary	
 
 install-binaries : install-dir
-	$(INSTALL) $(INSTALL_OPT) -m 0644 $(MODULE_DIR)/$(MODULE) $(ARCH)/security/
-	if [ -d $(SUDO_PLUGIN_PATH) ]; then ln -s -f $(ARCH)/security/$(MODULE) $(SUDO_PLUGIN_PATH)/$(SUDO_PLUGIN); fi
-	if [ -d $(SUDO_PLUGIN_PATH_1) ]; then ln -s -f $(ARCH)/security/$(MODULE) $(SUDO_PLUGIN_PATH_1)/$(SUDO_PLUGIN); fi
+	$(INSTALL) $(INSTALL_OPT) -m 0644 $(MODULE_DIR)/$(MODULE) $(ARCH)
+	if [ -d $(SUDO_PLUGIN_PATH) ]; then ln -s -f $(ARCH)/$(MODULE) $(SUDO_PLUGIN_PATH)/$(SUDO_PLUGIN); fi
+	if [ -d $(SUDO_PLUGIN_PATH_1) ]; then ln -s -f $(ARCH)/$(MODULE) $(SUDO_PLUGIN_PATH_1)/$(SUDO_PLUGIN); fi
 	$(INSTALL) $(INSTALL_OPT) $(APP_DIR)/$(APP) $(BIN_PATH) 
 
 install-dir :

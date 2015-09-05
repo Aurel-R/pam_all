@@ -253,15 +253,6 @@ int main(int argc, char **argv)
 
 	user = (struct pam_user *)data;
 
-	/*----- FOR TEST ----*//*
-	int i;
-	printf("user name is : %s\n", user->name);
-	printf("user group is : %s\n", user->grp->name);
-	for (i=0; i<user->grp->nb_users; i++)
-		printf("user[%d] (%s)\n", i, user->grp->users[i]->name);	
-	*//*----- FOR TEST ----*/
-
-	
 	if (argc < 2 || !strncmp(argv[1], "-h", 2) || !strncmp(argv[1], "--help", 6)) {
 		usage();
 		terminate(pamh, NULL, 1);
