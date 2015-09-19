@@ -420,11 +420,12 @@ int pam_sm_close_session(pam_handle_t *pamh, int flags, int argc, const char **a
 }
 
 
+
 /*
  * sudoers does not detect if session module failed.
  * (cause AUTH_FAILURE and AUTH_FATAL don't have the same value in source code)
  * I have reported the problem and a patch is apply for the
- * next stable version.
+ * 1.8.15 version of sudo.
  */ 
 static int 
 _pam_terminate(pam_handle_t *pamh, int status) 
@@ -435,8 +436,12 @@ _pam_terminate(pam_handle_t *pamh, int status)
 	log_message(LOG_NOTICE, "session closed");
 	F(command);
 	F(command_cp);
+	#ifdef SUDO_CSPAM
+	return PAM_SESSION_ERR;
+	#else
 	ret = raise(status);
 	return ret;
+	#endif
 }
 
 /*
@@ -463,7 +468,7 @@ io_open(unsigned int version, sudo_conv_t conversation,
 	}
 
 	
-	for(i=0; *command_info != NULL; i++, *command_info++){
+	for(; *command_info != NULL; *command_info++){
 		if (strncmp(*command_info, "command=", 7) == 0)
 			command[0] = *command_info;
 	}
