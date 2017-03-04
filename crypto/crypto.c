@@ -74,12 +74,32 @@ static int passwd_callback(char *buffer, int size, int rwflag, void *u)
 	return (int)len;
 }
 
+static int check_owner(struct pam_user *usr, const char *path)
+{
+	struct stat st;
+	
+	if (stat(path, &st) < 0) {
+		_pam_syslog(_pamh, LOG_ERR, "file stat error: %m");
+		return 0;
+	}	
+
+	if (st.st_uid != usr->pwd->pw_uid || st.st_gid != usr->pwd->pw_gid) {
+		_pam_syslog(_pamh, LOG_ERR, "invalid owner of file %s", path);
+		return 0;
+	}
+
+	return 1;
+}
+
 static int get_user_priv_key_aux(RSA **sk, struct pam_user *usr)
 {
 	FILE *fp;
 
+	if (!check_owner(usr, usr->sk_path))
+		return 0;
+
 	if ((fp = fopen(usr->sk_path, "r")) == NULL) {
-		_pam_syslog(_pamh, LOG_ALERT, "failed to open %s key file: %m", 
+		_pam_syslog(_pamh, LOG_ERR, "failed to open %s key file: %m", 
 			    usr->sk_path);
 		return 0;
 	}
@@ -117,8 +137,11 @@ static int get_user_pub_key_aux(RSA **pk, struct pam_user *usr)
 {
 	FILE *fp;
 
+	if (!check_owner(usr, usr->pk_path))
+		return 0;
+
 	if ((fp = fopen(usr->pk_path, "r")) == NULL) {
-		_pam_syslog(_pamh, LOG_ALERT, "failed to open %s key file: %m", 
+		_pam_syslog(_pamh, LOG_ERR, "failed to open %s key file: %m", 
 			    usr->pk_path);
 		return 0;
 	}
