@@ -32,7 +32,7 @@
 #define PAM_DEBUG_ARG		0x01 /* 'debug' option */
 #define PAM_ECHO		0x02 /* display info to user */
 #define DEFAULT_TIMEOUT		3200 /* in second */
-#define MIN_MS_TIMEOUT		12000 /* in ms */
+#define MIN_MS_TIMEOUT		60000 /* in ms */
 struct control {
 	int opt;
 	int quorum;
@@ -47,27 +47,26 @@ struct control {
 #define PATH_MAX	4096
 #endif
 
-/* 
- * Display the standard pam error message.
- * pam handle isn't used inside the function (set to 0) 
- */
+/* Display the standard pam error message.
+ * pam handle isn't used inside the function (set to 0) */
 #define D_ERR(TYPE)	(pam_strerror(0,TYPE))
 
-/*
- * Contains the private and public
- * users key
- */
+#define in_group_nam(uname, gname) \
+	(pam_modutil_user_in_group_nam_nam(pamh, uname, gname))
+
+#define in_group_id(uid, gid) \
+	(pam_modutil_user_in_group_uid_gid(_pamh, uid, gid))
+
+/* Contains the private and public users key */
 #define USR_DIR	"/etc/security/pam_all.d/users/"
 #define CMD_DIR "/var/lib/pam_all/"
 #define SESSION_STOP	9
 
 
 /* XXX: set enum with val of PAM */
-/* 
- * errors begin to 32
+/* errors begin to 32
  * (_PAM_RETURNED_VALUES in PAM-1.1.8)
- * to not interfere with the default values
- */
+ * to not interfere with the default values */
 #define NO_USR_GRP	32 
 #define GROUP_BAD_CONF	33
 #define QUORUM_BAD_CONF	34
@@ -81,10 +80,8 @@ struct control {
 #define VALIDATE	42
 
 
-/*
- * Unique name used to exchange data into 
- * the pam stack
- */
+/* Unique name used to exchange data into 
+ * the pam stack */
 #define DATA   "current_user"
 #define STATUS "config_status"
 
