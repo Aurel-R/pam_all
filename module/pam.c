@@ -83,7 +83,7 @@ void clean(pam_handle_t *pamh UNUSED, void *data, int err UNUSED)
 }
 
 static struct pam_user *init_pam_user(void)
-{ 
+{
 	struct pam_user *usr;
 	if ((usr = malloc(sizeof(*usr))) == NULL) {
 		D(("memory allocation error: %m"));
@@ -228,7 +228,8 @@ int group_authenticate(pam_handle_t *pamh, struct control ctrl, struct pam_user 
 		break; /* success */
 	}
 
-	if (!in_group_nam(usr->name, grp.ux_grp->gr_name)) {
+	if (!pam_modutil_user_in_group_nam_nam(pamh, usr->name, 
+	    grp.ux_grp->gr_name)) {
 		_pam_syslog(pamh, LOG_INFO, "user %s is not in %s group", 
 			    usr->name, ctrl.group);
 		_pam_syslog(pamh, LOG_NOTICE, "group authentication failure");

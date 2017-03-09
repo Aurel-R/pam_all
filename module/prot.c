@@ -24,7 +24,6 @@
 #include "../crypto/crypto.h"
 #include "prot.h"
 
-/* TODO: add log */
 
 int start_request_srv(pam_handle_t *pamh, const char **sock_name)
 {
@@ -52,9 +51,10 @@ int start_request_srv(pam_handle_t *pamh, const char **sock_name)
 	}
 
 	/* The abstract name (autobind by the kernel) is not
-	 * fill in the sockaddr_un when bind() is call. It
-	 * is necessary to call getsockname() to get the 
-	 * abstract socketname. */
+	 * fill in the sockaddr_un when bind() is call.
+	 * It is necessary to call getsockname() to get the 
+	 * abstract socketname. 
+	 */
 	err = getsockname(sock_fd, (struct sockaddr *)&sun, &len);
 	if (err < 0) {
 		_pam_syslog(pamh, LOG_ERR, "can not get the abstract name: %m");
@@ -153,6 +153,7 @@ struct req_info set_request(pam_handle_t *pamh, struct pam_user *usr,
 	
 	memset(path, '\0', sizeof(path));
 	snprintf(path, sizeof(path)-1, "%sreq-XXXXXX", CMD_DIR);
+
 	cm_fd = mkstemp(path);		
 	if (cm_fd < 0) {
 		_pam_syslog(pamh, LOG_ERR, "can not create tmp file: %m");
@@ -185,27 +186,22 @@ err:
 	return info;
 }
 
-static pam_handle_t _pamh;
-static int _ctrl;
-
 struct poll_table {
 	struct pollfd *fds;
-	struct pam_user **usrs;
+	struct pam_user *usrs;
 	size_t nmemb;
 	unsigned int ncon;
 };
 
-/* Add a opened flag before read a request
- * Add a validate flag to save user choice */
-
-static struct poll_table poll_init(int fd, size_t n)
+static struct poll_table poll_init(struct pam_user *usr, int fd)
 {
 	int i;
+	size_t n = usr->grp.nb_users + 2;
 	struct poll_table pt = { .fds = NULL, .usrs = NULL, 
 				 .nmemb = 0, .ncon = 0 };
 
 	if (!(pt.fds = calloc(n, sizeof(struct pollfd))) ||
-	    !(pt.usrs = calloc(n, sizeof(struct pam_user *)))) {
+	    !(pt.usrs = calloc(n, sizeof(struct pam_user)))) {
 		F(pt.fds);
 		return pt;
 	}
@@ -221,109 +217,42 @@ static struct poll_table poll_init(int fd, size_t n)
 
 static void poll_clean(struct poll_table pt)
 {
-	int i;
 	F(pt.fds);
-	for (i = 0; i < pt.nmemb; i++)
-		clean(pt.usrs[i]);
 	F(pt.usrs);	
 }
 
-static int already_connected(int csock, struct ucred ccred, struct poll_table *pt)
+static int handle_request(pam_handle_t *pamh, struct pam_user *usr, char *nonce, 
+			  int ctrl, int fd)
 {
-	int i;
-	for (i = 1; i < pt->ncon; i++) {
-		if (pt->usrs[i]->pwd->pw_uid == ccred.uid) {
-			close(pt->fds[i].fd);
-			pt->fds[i].revents = 0;
-			pt->fds[i].fd = csock;
-			return 1;
-		}
-	}
-	return 0;
-}
-
-static int new_connection(struct pam_user *usr, struct poll_table *pt)
-{
+	socklen_t optlen;
 	int err, csock;
 	struct passwd *cpwd;
 	struct ucred ccred;
-	struct pam_user *cusr = NULL;
-	socklen_t optlen = sizeof(struct ucred);
-	
+
 	csock = accept(fd, NULL, NULL);
 	if (csock < 0)
 		return PROT_ERR;
 	
+	optlen = sizeof(struct ucred);
 	err = getsockopt(csock, SOL_SOCKET, SO_PEERCRED, &ccred, &optlen); 
 	if (err < 0)
-		goto end;
+		goto end;	
 
-	if (already_connected(csock, ccred, pt))
-		return 0;	
-
-	if ((cpwd = pam_modutil_getpwuid(_pamh, ccred.uid)) == NULL) {
+	if ((cpwd = pam_modutil_getpwuid(pamh, ccred.uid)) == NULL) {
 		err = PROT_ERR;      	
 		goto end;
 	}
 
-	if (!in_group_id(cpwd->pw_uid, usr->grp.ux_grp->gr_gid)) {	
-		_pam_syslog(_pamh, LOG_NOTICE, "untrusted user connection (%d:%s)",
+	if (!pam_modutil_user_in_group_uid_gid(pamh, cpwd->pw_uid, 
+					       usr->grp.ux_grp->gr_gid)) {
+		_pam_syslog(pamh, LOG_NOTICE, "untrusted user connection (%d:%s)",
 			    cpwd->pw_uid, cpwd->pw_name);
 		err = CONTINUE;
 		goto end;
 	}
 
-	if ((cusr = calloc(1, sizeof(struct pam_user))) == NULL) {
-		err = PROT_ERR;
-		goto end;
-	}
-
-	cusr->pwd = cpwd;
-	cusr->name = cpwd->pw_name;
-	pt->fds[pt.ncon].fd = csock;
-	pt->fds[pt.ncon].events = POLLIN | POLLRHUP;
-	pt->fds[pt.ncon].revents = 0;
-	pt->usrs[pt.ncon] = cusr;
-	pt->ncon++;
 end:
-	if (err) {
-		close(csock);
-		clean(cusr);
-	}
-	return (err == CONTINUE) ? 0 : err;
-}
-
-static void close_connection(struct poll_table *pt, int *pos)
-{
-	close(pt->fd[*pos].fd);
-	clean(pt->usrs[*pos]);
-	pt->fd[*pos] = pt->fd[pt->ncon - 1];
-	pt->usrs[*pos] = pt->usrs[pt->ncon - 1];	
-	pt->ncon--;
-	*pos--;
-}
-
-static int new_request()
-{
-	return 0;
-}
-
-static int handle_event(struct pam_user *usr, char *nonce, struct poll_table *pt)
-{
-	int i;
-	int err = 0;
-
-	for (i = 0; i < pt->ncon && (!err || err == CONTINUE); i++) {
-		if (!pt->fds[i].revents)
-			continue;
-		if (pt->fds[i].revents && !i)
-			err = new_connection(usr, pt);
-		else if ((pt->fds[i].revents & POLLIN) && i)
-			err = new_request();
-		else /* i && POLLHUP | POLLRDHUP */
-			close_connection(pt, &i);
-	}
-	
+	close(csock);
 	return (err == CONTINUE) ? 0 : err;
 }
 
@@ -346,7 +275,7 @@ static inline int abort_waiting(void)
 	return ABORTED;
 }
 
-static int set_signal(sigset_t *omask, struct sigaction *osa, 
+static int setup_signal(sigset_t *omask, struct sigaction *osa, 
 			struct termios *oterm, int *tty)
 {
 	struct termios term;
@@ -390,27 +319,24 @@ static int unset_signal(sigset_t mask, struct sigaction sa,
 
 static inline int set_timeout(int timeout)
 {
-	timeout *= 1000;
+	timeout *= 100;
 	return (timeout < MIN_MS_TIMEOUT) ? MIN_MS_TIMEOUT : timeout;	
 }
 
-/* XXX: add *usr to poll_table ? [0] */
 int wait_validation(pam_handle_t *pamh, struct pam_user *usr, char *nonce, 
 		    struct control ctrl, int fd)
 {
-	_pamh = pamh;
-	_ctrl = ctrl.opt 
 	sigset_t o_sigmask;
 	struct sigaction o_sa;
 	struct termios o_term;	
 	int tty_fd, status = 0;
 	int set, timeout = set_timeout(ctrl.timeout);
-	struct poll_table p = poll_init(fd, usr->grp.nb_users + 2);
-	
+	struct poll_table p = poll_init(usr, fd);
+
 	if (!p.nmemb)
 		return PROT_ERR;
 
-	if (set_signal(&o_sigmask, &o_sa, &o_term, &tty_fd)) { 
+	if (setup_signal(&o_sigmask, &o_sa, &o_term, &tty_fd)) { 
 		poll_clean(p);
 		return PROT_ERR;
 	}
@@ -423,7 +349,7 @@ int wait_validation(pam_handle_t *pamh, struct pam_user *usr, char *nonce,
 			 (set < 0 && errno == EINTR))
 			status = abort_waiting();
 		else if (set)
-			status = handle_event(usr, nonce, &p);
+			status = handle_request(pamh, usr, nonce, ctrl.opt, fd);
 		else
 			status = TIMEOUT;		
 	}
