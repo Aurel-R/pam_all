@@ -399,7 +399,7 @@ int sign(struct pam_user *user, unsigned char *dst, const unsigned char *m)
 
 	if (!RSA_sign(NID_sha1, m, DIGEST_LEN, dst, &len, sk) || 
 	    len > SIG_LEN) {
-		_pam_syslog(_pamh, LOG_ERR, "cannot sign datas");			
+		_pam_syslog(_pamh, LOG_ERR, "cannot sign datas");
 		SSL_ERR(ERR_peek_last_error());
 		status = ERR;
 	}
