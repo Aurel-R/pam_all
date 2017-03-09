@@ -1,4 +1,3 @@
-#define _GNU_SOURCE
 #include <stdio.h>
 #include <stdlib.h>
 #include <stdint.h>
@@ -30,7 +29,7 @@ static int64_t reverse_vlq(int64_t vlq)
 	size_t size = sizeof(int64_t);
 	int i;
 	union {
-		char t[size];
+		int8_t t[sizeof(int64_t)];
 		int64_t v;
 	} old, new;
        
@@ -40,21 +39,21 @@ static int64_t reverse_vlq(int64_t vlq)
 	return new.v;
 }
 
-/* Read a reverse VLQ (signed and unsigned) */
-static size_t read_vlq(int32_t *vlq, const int8_t *c) 
+/* Read a reversed VLQ (signed and unsigned) */
+static size_t read_vlq(int32_t *offset, const int8_t *vlq) 
 {
 	int32_t x = 0;
 	size_t n = 0;
 
 	do {
-		x = (x << 6) | (int32_t)(*c & 0x3F);
+		x = (x << 6) | (int32_t)(*vlq & 0x3F);
 		n++;
-	} while (*c-- & 0x80);
+	} while (*vlq-- & 0x80);
 
-	if (*(c + 1) & 0x40)
-		*vlq = TSC(x);
+	if (*(vlq + 1) & 0x40)
+		*offset = TSC(x);
 	else
-		*vlq = x;
+		*offset = x;
 
 	return n;
 }
@@ -72,7 +71,7 @@ static size_t write_vlq(int64_t *vlq, int32_t offset)
 		TSC(offset);
 		*vlq |= 0x40;
 	}
-
+	
 	*vlq |= (int64_t)offset & 0x3F;
 	
 	for (n = 1; (offset >>= 6); n++) {
@@ -245,11 +244,7 @@ size_t cm_raw_data_len(void *ptr, size_t data_size)
 	return data_size - n;
 }
 
-/* 
- * FixMe : Modify macro for rm object_size ? rename + do_new_name() 
- *	   Verify sizeof(object) is good ? (just preventive)
- *	   verify alignement ? (preventive too) 
- * */
+/* FixMe: no vlq can cause segfault */
 void cm_processing_r(void **addr, size_t object_size, size_t data_size)
 {
 	int32_t offset;
