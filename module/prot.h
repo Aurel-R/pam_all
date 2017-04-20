@@ -72,8 +72,3 @@ int wait_validation(pam_handle_t *pamh, struct pam_user *usr, char *nonce,
 
 #endif
 
-
-
-
-
-
