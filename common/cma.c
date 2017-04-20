@@ -24,19 +24,16 @@ static struct memory mem = {
 
 #define TSC(x)	(x = ((~x) + 1))
 
-static int64_t reverse_vlq(int64_t vlq)
+static inline int64_t reverse_vlq(int64_t vlq)
 {
-	size_t size = sizeof(int64_t);
-	int i;
-	union {
-		int8_t t[sizeof(int64_t)];
-		int64_t v;
-	} old, new;
-       
-	for (old.v = vlq, new.v = 0, i = 0; i < size; i++) 
-		new.t[size - i - 1] = old.t[i];
-	
-	return new.v;
+	return  ((vlq << 56) & 0xff00000000000000UL) |
+		((vlq << 40) & 0x00ff000000000000UL) |
+		((vlq << 24) & 0x0000ff0000000000UL) |
+		((vlq <<  8) & 0x000000ff00000000UL) |
+		((vlq >>  8) & 0x00000000ff000000UL) |
+		((vlq >> 24) & 0x0000000000ff0000UL) |
+		((vlq >> 40) & 0x000000000000ff00UL) |
+	       	((vlq >> 56) & 0x00000000000000ffUL);
 }
 
 /* Read a reversed VLQ (signed and unsigned) */
@@ -58,10 +55,8 @@ static size_t read_vlq(int32_t *offset, const int8_t *vlq)
 	return n;
 }
 
-/*  
- *  A negative value can be represented
- *  Return the number of bytes used for the vlq 
- */
+/*  A negative value can be represented
+ *  Return the number of bytes used for the vlq */
 static size_t write_vlq(int64_t *vlq, int32_t offset)
 {	
 	size_t n;
@@ -155,6 +150,7 @@ static int trunc_file(size_t size)
 	return 0;				
 }
 
+/* XXX: rename to cm_alloc ? */
 /* add protection after cm_sync() (actualy create fragmentation) */
 int cm_allocator(void **addr, size_t size, int flag)
 {
@@ -204,7 +200,8 @@ int affect_ptr(void **ptr, void *to)
 	return -1;
 }
 
-/* try without mscync in some case */
+/* try without mscync in some case 
+ * XXX: rename to serialize */
 void *cm_sync(int flags)
 {
 	size_t size, indice = mem.vlq_size;
@@ -217,9 +214,8 @@ void *cm_sync(int flags)
 	while (al) {
 		size = sizeof(int64_t) - 1;
 		do {
-			/* FixMe: multiple reverse on vlq value if 
-			 * sync is called twice 
-			 */ 
+			/* FIXME: multiple reverse on vlq value if 
+			 * sync is called twice */ 
 			al->vlq = reverse_vlq(al->vlq);
 			vlq[indice--] = al->vlq_c[size];	
 		} while (al->vlq_c[size--] & 0x80);
@@ -227,7 +223,7 @@ void *cm_sync(int flags)
 	}	
 	
 	vlq[indice] = 0;
-	if (mem.fd != -1 && mem.flags != SPECIAL_FILE &&
+	if (flags && mem.fd != -1 && mem.flags != SPECIAL_FILE &&
 	    msync(mem.base_addr, mem.map_size, flags) == -1)
 		return NULL;
 
@@ -244,7 +240,8 @@ size_t cm_raw_data_len(void *ptr, size_t data_size)
 	return data_size - n;
 }
 
-/* FixMe: no vlq can cause segfault */
+/* FIXME: no vlq can cause segfault 
+ * XXX: rename to deserialize */
 void cm_processing_r(void **addr, size_t object_size, size_t data_size)
 {
 	int32_t offset;
