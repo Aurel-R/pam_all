@@ -243,7 +243,7 @@ int pam_sm_open_session(pam_handle_t *pamh, int flags, int argc, const char **ar
 		return _pam_terminate(pamh, AUTH_WARN);
 	}
 	
-	/* TODO: add 'check_link' fct (man 2 access) */
+	/* TODO: add 'check_link' */
 
 	srv_fd = start_request_srv(pamh, &saname);
 	if (srv_fd < 0 || !saname) 
@@ -278,8 +278,7 @@ end:
 	close(srv_fd);
 	unlink(tmpnam); 
 	ssl_release();
-	if (req.req_ptr)
-		munmap(req.req_ptr, req.len); 
+	if (req.req_ptr) munmap(req.req_ptr, req.len); 
 	return (err) ? _pam_terminate(pamh, PAM_SYSTEM_ERR) : PAM_SUCCESS;
 }
 
@@ -293,11 +292,18 @@ int pam_sm_close_session(pam_handle_t *pamh, int flags, int argc, const char **a
 static int _pam_terminate(pam_handle_t *pamh, int status) 
 {
 	pam_set_data(pamh, DATA, NULL, NULL);
+	return (status == AUTH_WARN) ? PAM_IGNORE :
 #ifdef COMPATIBLE_SUDOERS
+		status;
+#else
+		raise(SESSION_STOP);
+#endif
+
+/*#ifdef COMPATIBLE_SUDOERS
 	return (status == AUTH_WARN) ? PAM_IGNORE : status;
 #else
 	return (status == AUTH_WARN) ? PAM_IGNORE : raise(SESSION_STOP);
-#endif
+#endif*/
 }	
 
 /*
