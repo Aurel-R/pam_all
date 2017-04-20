@@ -33,7 +33,6 @@
 #include <openssl/bn.h>
 #include <openssl/pem.h>
 #include <openssl/sha.h>
-
 #include "../module/pam.h"
 #include "../common/utils.h"
 #include "crypto.h"
@@ -59,6 +58,7 @@ void ssl_release(void)
 	if (_init) {
 		EVP_cleanup();	
 		ERR_free_strings();
+		_init = 0;
 	}
 }
 
@@ -397,7 +397,7 @@ int sign(struct pam_user *user, unsigned char *dst, const unsigned char *m)
 		return ERR;
 	}
 
-	if (!RSA_sign(NID_sha1, m, DIGEST_LEN, dst, &len, sk) || 
+	if (!RSA_sign(NID_sha256, m, DIGEST_LEN, dst, &len, sk) || 
 	    len > SIG_LEN) {
 		_pam_syslog(_pamh, LOG_ERR, "cannot sign datas");
 		SSL_ERR(ERR_peek_last_error());
@@ -407,6 +407,4 @@ int sign(struct pam_user *user, unsigned char *dst, const unsigned char *m)
 	RSA_FREE(sk);	
 	return status;
 }
-
-
 
