@@ -37,11 +37,10 @@
 
 #define EXPONENT	0x10001 /* 65537 */
 
-
-#define SSL_ERR(x) do {								 \
-	if (_IS_SET(_ctrl, PAM_DEBUG_ARG))					 \
-		_pam_syslog(_pamh, LOG_DEBUG, "%s", ERR_reason_error_string(x)); \
-	D(("%s", ERR_error_string(x, NULL)));					 \
+#define SSL_ERR(x) do {								\
+	_pam_syslog(_pamh, LOG_ERR, "%s", ERR_reason_error_string(x));		\
+	if (_IS_SET(_ctrl, PAM_DEBUG_ARG))					\
+		_pam_syslog(_pamh, LOG_DEBUG, "%s", ERR_error_string(x));	\
 } while (0)
 
 #define RSA_FREE(x) do {	\
