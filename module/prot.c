@@ -24,6 +24,7 @@
 #include "../crypto/crypto.h"
 #include "prot.h"
 
+/* TODO: add log */
 
 int start_request_srv(pam_handle_t *pamh, const char **sock_name)
 {
@@ -51,10 +52,9 @@ int start_request_srv(pam_handle_t *pamh, const char **sock_name)
 	}
 
 	/* The abstract name (autobind by the kernel) is not
-	 * fill in the sockaddr_un when bind() is call.
-	 * It is necessary to call getsockname() to get the 
-	 * abstract socketname. 
-	 */
+	 * fill in the sockaddr_un when bind() is call. It
+	 * is necessary to call getsockname() to get the 
+	 * abstract socketname. */
 	err = getsockname(sock_fd, (struct sockaddr *)&sun, &len);
 	if (err < 0) {
 		_pam_syslog(pamh, LOG_ERR, "can not get the abstract name: %m");
@@ -153,7 +153,6 @@ struct req_info set_request(pam_handle_t *pamh, struct pam_user *usr,
 	
 	memset(path, '\0', sizeof(path));
 	snprintf(path, sizeof(path)-1, "%sreq-XXXXXX", CMD_DIR);
-
 	cm_fd = mkstemp(path);		
 	if (cm_fd < 0) {
 		_pam_syslog(pamh, LOG_ERR, "can not create tmp file: %m");
@@ -168,9 +167,12 @@ struct req_info set_request(pam_handle_t *pamh, struct pam_user *usr,
 	
 	cm_set_properties(cm_fd, MAP_SHARED, 0);
 	request = fill_request(usr, addr, cmd);
-	if (!request || sign_request(usr, request))
+	if (!request || (info.req_ptr = cm_sync(0)) == NULL ||
+	    sign_request(usr, request))
 		goto err;
-	if ((info.req_ptr = cm_sync(MS_SYNC)) == NULL)
+
+	info.len = get_cm_size();
+	if (msync(info.req_ptr, info.len, MS_SYNC) < 0)
 		goto err;
 
 	*name = path;
@@ -186,12 +188,23 @@ err:
 	return info;
 }
 
+
+static pam_handle_t _pamh;
+static int _ctrl;
+
 struct poll_table {
 	struct pollfd *fds;
 	struct pam_user *usrs;
 	size_t nmemb;
 	unsigned int ncon;
 };
+
+static void poll_clean(struct poll_table pt)
+{
+	/* XXX: close all residual connection */
+	F(pt.fds);
+	F(pt.usrs);
+}
 
 static struct poll_table poll_init(struct pam_user *usr, int fd)
 {
@@ -200,9 +213,9 @@ static struct poll_table poll_init(struct pam_user *usr, int fd)
 	struct poll_table pt = { .fds = NULL, .usrs = NULL, 
 				 .nmemb = 0, .ncon = 0 };
 
-	if (!(pt.fds = calloc(n, sizeof(struct pollfd))) ||
-	    !(pt.usrs = calloc(n, sizeof(struct pam_user)))) {
-		F(pt.fds);
+	if (!(pt.fds = calloc(n, sizeof(struct pollfd)))    ||
+	    !(pt.usrs = calloc(n, sizeof(struct pam_user))))
+		poll_clean(pt);
 		return pt;
 	}
 
@@ -210,49 +223,100 @@ static struct poll_table poll_init(struct pam_user *usr, int fd)
 		pt.fds[i].events = POLLIN | POLLRDHUP;
 
 	pt.fds[0].fd = fd;
+	pt.usrs[0] = *usr;
 	pt.nmemb = n;
 	pt.ncon = 1;
 	return pt;
 }
 
-static void poll_clean(struct poll_table pt)
+static int already_connected(int csock, struct ucred ccred, struct poll_table *pt)
 {
-	F(pt.fds);
-	F(pt.usrs);	
+	int i;
+	for (i = 1; i < pt->ncon; i++) {
+		if (pt->usrs[i].pwd->pw_uid == ccred.uid) {
+			close(pt->fds[i].fd);
+			pt->fds[i].revents = 0; 
+			pt->fds[i].fd = csock;
+			return 1;
+		}
+	}
+	return 0;
 }
 
-static int handle_request(pam_handle_t *pamh, struct pam_user *usr, char *nonce, 
-			  int ctrl, int fd)
+static int new_connection(struct poll_table *pt)
 {
-	socklen_t optlen;
 	int err, csock;
 	struct passwd *cpwd;
 	struct ucred ccred;
+	struct pam_user cusr;
+	socklen_t optlen = sizeof(struct ucred);
+	gid_t gid = pt->usrs[0]->grp.ux_grp->gr_gid;
 
 	csock = accept(fd, NULL, NULL);
 	if (csock < 0)
 		return PROT_ERR;
 	
-	optlen = sizeof(struct ucred);
 	err = getsockopt(csock, SOL_SOCKET, SO_PEERCRED, &ccred, &optlen); 
 	if (err < 0)
-		goto end;	
+		goto end;
 
-	if ((cpwd = pam_modutil_getpwuid(pamh, ccred.uid)) == NULL) {
+	if (already_connected(csock, ccred, pt))
+		return 0;	
+
+	if ((cpwd = pam_modutil_getpwuid(_pamh, ccred.uid)) == NULL) {
 		err = PROT_ERR;      	
 		goto end;
 	}
 
-	if (!pam_modutil_user_in_group_uid_gid(pamh, cpwd->pw_uid, 
-					       usr->grp.ux_grp->gr_gid)) {
-		_pam_syslog(pamh, LOG_NOTICE, "untrusted user connection (%d:%s)",
+	if (!in_group_id(cpwd->pw_uid, gid)) {
+		_pam_syslog(_pamh, LOG_NOTICE, "untrusted user connection (%d:%s)",
 			    cpwd->pw_uid, cpwd->pw_name);
 		err = CONTINUE;
 		goto end;
 	}
 
+	cusr.pwd = cpwd; 
+	cusr.name = cpwd->pw_name; 
+	pt->fds[pt.ncon].fd = csock;
+	pt->fds[pt.ncon].events = POLLIN | POLLRHUP;
+	pt->fds[pt.ncon].revents = 0;
+	pt->usrs[pt.ncon] = cusr;
+	pt->ncon++;
 end:
-	close(csock);
+	if (err) close(csock);
+	return (err == CONTINUE) ? 0 : err;
+}
+
+static void close_connection(struct poll_table *pt, int *pos)
+{
+	close(pt->fd[*pos].fd);
+	pt->fd[*pos] = pt->fd[pt->ncon - 1];
+	pt->usrs[*pos] = pt->usrs[pt->ncon - 1];	
+	pt->ncon--;
+	*pos--;
+}
+
+static int new_request()
+{
+	return 0;
+}
+
+static int handle_event(struct poll_table *pt, char *nonce, int *q)
+{
+	int i;
+	int err = 0;
+
+	for (i = 0; i < pt->ncon && (!err || err == CONTINUE); i++) {
+		if (!pt->fds[i].revents)
+			continue;
+		if (pt->fds[i].revents && !i)
+			err = new_connection(pt);
+		else if ((pt->fds[i].revents & POLLIN) && i)
+			err = new_request();
+		else /* i && POLLHUP | POLLRDHUP */
+			close_connection(pt, &i);
+	}
+	
 	return (err == CONTINUE) ? 0 : err;
 }
 
@@ -275,7 +339,7 @@ static inline int abort_waiting(void)
 	return ABORTED;
 }
 
-static int setup_signal(sigset_t *omask, struct sigaction *osa, 
+static int set_signal(sigset_t *omask, struct sigaction *osa, 
 			struct termios *oterm, int *tty)
 {
 	struct termios term;
@@ -319,37 +383,40 @@ static int unset_signal(sigset_t mask, struct sigaction sa,
 
 static inline int set_timeout(int timeout)
 {
-	timeout *= 100;
+	timeout *= 1000;
 	return (timeout < MIN_MS_TIMEOUT) ? MIN_MS_TIMEOUT : timeout;	
 }
 
 int wait_validation(pam_handle_t *pamh, struct pam_user *usr, char *nonce, 
 		    struct control ctrl, int fd)
 {
+	_pamh = pamh;
+	_ctrl = ctrl.opt 
 	sigset_t o_sigmask;
 	struct sigaction o_sa;
 	struct termios o_term;	
+	int quorum = 1;
 	int tty_fd, status = 0;
 	int set, timeout = set_timeout(ctrl.timeout);
-	struct poll_table p = poll_init(usr, fd);
-
+	struct poll_table p = poll_init(usr ,fd);
+	
 	if (!p.nmemb)
 		return PROT_ERR;
 
-	if (setup_signal(&o_sigmask, &o_sa, &o_term, &tty_fd)) { 
+	if (set_signal(&o_sigmask, &o_sa, &o_term, &tty_fd)) { 
 		poll_clean(p);
 		return PROT_ERR;
 	}
 	
-	while (!status) {
+	while (!status && quorum != usr->grp.quorum) {
 		set = poll(p.fds, p.ncon, timeout);
 		if (set < 0 && errno != EINTR)
 			status = ERR;	
 		else if ((got_SIGINT || got_SIGTERM) || 
-			 (set < 0 && errno == EINTR))
+			 (set < 0 && errno == EINTR)) /* be careful about over signals (SIGUSR etc send by a others) */
 			status = abort_waiting();
 		else if (set)
-			status = handle_request(pamh, usr, nonce, ctrl.opt, fd);
+			status = handle_event(&p, nonce, &quorum);
 		else
 			status = TIMEOUT;		
 	}
