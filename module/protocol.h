@@ -21,54 +21,54 @@
 #ifndef H_PROT_H
 #define H_PROT_H
 
-#include <stdint.h>
-
 #define PROT_ERR	-1
 
-#define USR_NAME_LEN	64
-#define REQ_BUFF	16
-#define VAL_BUFF	32
-#define NONCE_LEN	16
-
-#define PROT_DATA_LEN	128
+#ifndef PATH_MAX
+#define PATH_MAX	4096
+#endif
 #define UNIX_PATH_MAX	108
+#define USER_NAME_LEN	64
+#define DATA_BUFF_LEN	128
 
-union prot {
-	uint8_t usr[USR_NAME_LEN]; 
-	uint8_t req[REQ_BUFF];
-	uint8_t val[VAL_BUFF];  
-	uint8_t tok[NONCE_LEN];   
-	uint8_t sig[SIG_LEN]; /* hash(all MINUS sig) (so buffer on PROT_DATA_LEN) */
-	uint8_t buffer[PROT_DATA_LEN + SIG_LEN];
+enum msg_code {
+	SERVER_INFO,
+	CANCEL_COMMAND,
+	REFUSE_COMMAND,
+	VALIDATE_COMMAND
+};
+/*
+struct msg_data {
+	enum msg_code code;
+	uint8_t data[DATA_BUFF_LEN];
 };
 
-struct req_info {
-	struct req *req_ptr;
-	size_t len;
+union msg_packet {
+	struct msg_data data;
+	uint8_t buffer[sizeof(struct msg_data)];
+};
+*/
+struct msg_packet {
+	enum msg_code code;
+	uint8_t data[DATA_BUFF_LEN];
 };
 
-struct req {
-	char user[USR_NAME_LEN]; 
-	char saddr[UNIX_PATH_MAX]; 
-	char nonce[NONCE_LEN]; 
-	uint8_t sig[SIG_LEN]; 
-	struct req_datas *datas;
-};
-
-struct req_datas {
-	char *usr;
+struct request {
 	pid_t pid;
-	char *tty;
-	char *pwd;
-	char *cmd;
-}; 
+	char user[USER_NAME_LEN];
+	char tty[PATH_MAX];
+	char pwd[PATH_MAX];
+	time_t start;
+	time_t end;
+	char saddr[UNIX_PATH_MAX];
+	char *command;
+};
 
 int start_request_srv(pam_handle_t *pamh, const char **sock_name);
-struct req_info set_request(pam_handle_t *pamh, struct pam_user *usr, 
-			    const char *addr, struct sudo_command cmd, 
-			    const char **name);
-int wait_validation(pam_handle_t *pamh, struct pam_user *usr, char *nonce, 
-		    struct control ctrl, int fd);
+int set_request(pam_handle_t *pamh, struct pam_user *usr, struct control ctrl, 
+				const char *addr, struct sudo_cmd *cmd, 
+				const char **name);
+int wait_for_validation(pam_handle_t *pamh, struct pam_user *usr, 
+						struct control ctrl, int fd);
 
 #endif
 

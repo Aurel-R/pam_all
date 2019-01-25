@@ -26,29 +26,21 @@
 
 #define UNUSED	__attribute__((unused))
 
-#define SERVICE_NAME		"sudo"
-#define USER_TTY		"/dev/tty"
-
-#define PAM_DEBUG_ARG		0x01 /* 'debug' option */
-#define PAM_ECHO		0x02 /* display info to user */
-#define DEFAULT_TIMEOUT		3200 /* in second */
-#define MIN_MS_TIMEOUT		60000 /* in ms */
+#define PAM_DEBUG_ARG		0x01 
+#define PAM_ECHO		0x02
+#define DEFAULT_TIMEOUT		3200 
+#define MIN_MS_TIMEOUT		60000 
 struct control {
 	int opt;
-	int quorum;
+	unsigned quorum;
 	const char *group;
-	int timeout;
+	unsigned timeout;
 };
-
-#define SUCCESS		PAM_SUCCESS	
-#define ERR		PAM_SYSTEM_ERR
 
 #ifndef PATH_MAX
 #define PATH_MAX	4096
 #endif
 
-/* Display the standard pam error message.
- * pam handle isn't used inside the function (set to 0) */
 #define D_ERR(TYPE)	(pam_strerror(0,TYPE))
 
 #define in_group_nam(uname, gname) \
@@ -57,60 +49,57 @@ struct control {
 #define in_group_id(uid, gid) \
 	(pam_modutil_user_in_group_uid_gid(_pamh, uid, gid))
 
-/* Contains the private and public users key */
-#define USR_DIR	"/etc/security/pam_all.d/users/"
-#define CMD_DIR "/var/lib/pam_all/"
-#define SESSION_STOP	9
+#define CMDLINE		"/proc/self/cmdline"
+#define USER_TTY	"/dev/tty"
+#define CMD_DIR 	"/var/lib/pam_all"
 
-
-/* XXX: set enum with val of PAM */
-/* errors begin to 32
- * (_PAM_RETURNED_VALUES in PAM-1.1.8)
- * to not interfere with the default values */
-#define NO_USR_GRP	32 
+/* XXX: replace by enum */
+/* Errors begin at 32 (_PAM_RETURNED_VALUES in PAM-1.1.8)
+ * so as not interfere with the default values */
+#define USR_NOT_INGRP	32 
 #define GROUP_BAD_CONF	33
 #define QUORUM_BAD_CONF	34
 #define BAD_CONF GROUP_BAD_CONF | QUORUM_BAD_CONF /* 35 */
-#define AUTH_WARN	36
-#define TIMEOUT		37
-#define CANCELED	38
-#define ABORTED		39
-#define REFUSED		40
-#define CONTINUE	41
-#define VALIDATE	42
+#define TIMEOUT		36
+#define CANCELED	37
+#define ABORTED		38
+#define REFUSED		39
+#define CONTINUE	40
+#define VALIDATE	41
 
-
-/* Unique name used to exchange data into 
- * the pam stack */
-#define DATA   "current_user"
-#define STATUS "config_status"
+struct sudo_cmd {
+	int argc;
+	char **argv;
+	size_t len;
+	char *cmdline;
+};
 
 struct pam_group {
 	struct group *ux_grp;
-	int nb_users;
-	int quorum;
+	size_t nb_users;
+	unsigned quorum;
 };
 
 struct pam_user {
 	char *name;
-	char *pass;
 	char *tty;
 	char cwd[PATH_MAX];
-	char *sk_path; 
-	char *pk_path;
 	struct passwd *pwd;
+	struct ucred cred;
 	struct pam_group grp;
 };
 
-
 void _pam_syslog(void *pamh, int priority, const char *fmt, ...);
-void _pam_info(void *pamh, int ctrl, const char *buffer);
+void _pam_info(void *pamh, int ctrl, const char *fmt, ...);
 void clean(pam_handle_t *pamh UNUSED, void *data, int err UNUSED);
-int user_authenticate(pam_handle_t *pamh, struct control ctrl, struct pam_user **user);
-int group_authenticate(pam_handle_t *pamh, struct control ctrl, struct pam_user **user);
-int group_quorum(pam_handle_t *pamh, struct control ctrl, struct pam_user **user);
-int get_auth_status(pam_handle_t *pamh);
-int get_auth_data(pam_handle_t *pamh, struct pam_user **user);
+int get_pam_user(pam_handle_t *pamh, struct control ctrl, struct pam_user **user);
+int group_authenticate(pam_handle_t *pamh, struct control ctrl, struct pam_user *user);
+int group_quorum(pam_handle_t *pamh, struct control ctrl, struct pam_user *user);
+int check_dir_access(pam_handle_t *pamh, struct control ctrl);
+int preauth_error(struct pam_user *user, int err);
+struct sudo_cmd *get_command(pam_handle_t *pamh);
+void clean_command(struct sudo_cmd *cmd);
+int checklink(pam_handle_t *pamh, struct sudo_cmd *cmd, struct sudo_cmd **cmd_copy);
 
 #endif
 

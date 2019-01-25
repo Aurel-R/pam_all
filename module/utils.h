@@ -21,18 +21,25 @@
 #ifndef H_UTILS_H
 #define H_UTILS_H
 
-#define F(x) do {		\
-	free(x), x = NULL; 	\
-} while (0)
-
-#define SWAP(__t__, _x1, _x2) do {	\
-	__t__[_x1] ^= __t__[_x2];	\
-	__t__[_x2] ^= __t__[_x1];	\
-	__t__[_x1] ^= __t__[_x2];	\
-} while (0)
-
 #define SET(x, FLAG)		(x |= FLAG)
 #define UNSET(x, FLAG)		(x &= ~FLAG)
 #define _IS_SET(x, FLAG)	(x & FLAG)
+
+#ifndef PATH_MAX
+#define PATH_MAX		4096
+#endif 
+
+#ifndef MAX
+#define MAX(x, y) ((x) > (y) ? (x) : (y))
+#endif
+#ifndef MIN
+#define MIN(x, y) ((x) < (y) ? (x) : (y))
+#endif
+
+#define MAX_SYMLINK_LEVEL	20
+
+void str_replace(char *s, size_t len, const char c, const char r);
+char *is_a_symlink(const char *argv, int link_level);
+unsigned strtou(const char *s, int *err_or_overflow);
 
 #endif
