@@ -37,15 +37,18 @@ static struct control _pam_parse(pam_handle_t *pamh, int flags,
 						int argc, const char **argv)
 {
 	int ret;
-	struct control ctrl = { .opt = PAM_ECHO, .timeout = DEFAULT_TIMEOUT, 
-				.group = NULL, .quorum = 0 };
+	struct control ctrl = { 
+		.opt = PAM_ECHO, 
+		.timeout = DEFAULT_TIMEOUT, 
+		.group = NULL, 
+		.quorum = 0 
+	};
 
 	for (; argc--; argv++) {
 		if (!strcmp(*argv, "debug")) {
 			SET(ctrl.opt, PAM_DEBUG_ARG);
 			D(("debug option set"));
-		} else if (!strcmp(*argv, "silent") || 
-			   _IS_SET(flags, PAM_SILENT)) {
+		} else if (!strcmp(*argv, "silent")) {
 			UNSET(ctrl.opt, PAM_ECHO);
 			D(("silent option set"));
 		} else if (!strncmp(*argv, "timeout=", 8)) { /* 0 = inf */
@@ -67,7 +70,12 @@ static struct control _pam_parse(pam_handle_t *pamh, int flags,
 			_pam_syslog(pamh, LOG_ERR, "unknow option: %s", *argv);
 		}
 	}
-
+/*
+	if (_IS_SET(flags, PAM_SILENT)) {
+		UNSET(ctrl.opt, PAM_ECHO);
+		D(("silent option set"));
+	}
+*/
 	return ctrl;
 }
 
