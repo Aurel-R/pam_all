@@ -3,7 +3,7 @@
 #include <unistd.h>
 #include <errno.h>
 #include <limits.h>
-#include <sys/tpyes.h>
+#include <sys/types.h>
 #include <linux/limits.h>
 #include "utils.h"
 
@@ -42,8 +42,7 @@ char *is_a_symlink(const char *argv, int link_level)
 unsigned strtou(const char *s, int *err_or_overflow)
 {
 	char *end;
-	const long sl;	
-	unsigned retval;
+	long sl;	
 	errno = 0;
 
 	sl = strtol(s, &end, 10);
