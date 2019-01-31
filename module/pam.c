@@ -191,7 +191,11 @@ static int unix_group(pam_handle_t *pamh, const char *grp_name, struct pam_group
 int group_authenticate(pam_handle_t *pamh, struct control ctrl, struct pam_user *user)
 {
 	int retval;
-	struct pam_group grp;	
+	struct pam_group grp = {
+		.ux_grp = NULL,
+		.nb_users = 0,
+		.quorum = 0	
+	};	
 
 	retval = unix_group(pamh, ctrl.group, &grp);
 	switch (retval) {
@@ -321,7 +325,7 @@ void clean_command(struct sudo_cmd *cmd)
 
 	if (!cmd)
 		return;
-
+	
 	for (i = 0; i < (size_t)cmd->argc; i++)
 		free(cmd->argv[i]);
 	free(cmd->argv);
@@ -333,10 +337,10 @@ struct sudo_cmd *get_command(pam_handle_t *pamh)
 {
 	int fd;
 	ssize_t n;
-	size_t arg_max = (size_t)sysconf(ARG_MAX);
+	size_t arg_max = (size_t)sysconf(_SC_ARG_MAX);
 	struct sudo_cmd *cmd = malloc(sizeof(*cmd));
 	
-	D(("ARG_MAX = %l", arg_max));
+	D(("ARG_MAX = %zd", arg_max));
 	
 	if (!cmd) {
 		D(("memory allocation error: %m"));
@@ -352,7 +356,7 @@ struct sudo_cmd *get_command(pam_handle_t *pamh)
 		return NULL;
 
 	}	
-
+	// XXX: to much higer i think. use a tmp buffer and free it
 	cmd->cmdline = calloc(arg_max, sizeof(*cmd->cmdline));
 	if (!cmd->cmdline) {
 		D(("memory allocation error: %m"));
@@ -413,10 +417,10 @@ int checklink(pam_handle_t *pamh, struct sudo_cmd *cmd, struct sudo_cmd **cmd_co
 	if (do_check) 
 		return do_checklink(cmd, *cmd_copy);
 
-	cmdcp = malloc(sizeof(*cmdcp));
+	cmdcp = calloc(1, sizeof(*cmdcp));
 	if (!cmdcp) {
 		D(("memory allocation error: %m"));
-		_pam_syslog(pamh, LOG_CRIT, "malloc() failure");
+		_pam_syslog(pamh, LOG_CRIT, "calloc() failure");
 		return PAM_SYSTEM_ERR;
 	}
 
@@ -436,7 +440,7 @@ int checklink(pam_handle_t *pamh, struct sudo_cmd *cmd, struct sudo_cmd **cmd_co
 			continue;
 		}
 		cmdcp->argv[i] = strdup(cmd->argv[i]);	
-		if (cmdcp->argv[i]) 
+		if (!cmdcp->argv[i]) 
 			goto strdup_error;
 	}
 
