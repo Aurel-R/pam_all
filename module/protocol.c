@@ -400,7 +400,11 @@ static int recv_packet(int fd, struct msg_packet *msg)
 	struct msg_packet _msg;
 	
 	memset(&_msg, 0, sizeof(_msg));
-	n = read(fd, &_msg, sizeof(_msg)); // sometime 0
+	n = read(fd, &_msg, sizeof(_msg));
+	
+	if (!n)
+		return CONNECTION_CLOSED;
+
 	if (n != sizeof(_msg)) {
 		errno = (n < 0) ? errno : EBADMSG;
 		_pam_syslog(_pamh, LOG_ERR, "recv packet error: %m");
@@ -473,12 +477,17 @@ static int validate_command(int fd, struct poll_table *pt,
 	
 }
 
-static int new_request(struct poll_table *pt, size_t pos, unsigned *quorum) 
+static int new_request(struct poll_table *pt, size_t *pos, unsigned *quorum) 
 {
 	struct msg_packet msg;
-	int fd = pt->fds[pos].fd;
-	struct pam_user *usr = &pt->usrs[pos];
+	int fd = pt->fds[*pos].fd;
+	struct pam_user *usr = &pt->usrs[*pos];
 	int err = recv_packet(fd, &msg);
+
+	if (err == CONNECTION_CLOSED) {
+		close_connection(pt, pos);
+		return CONTINUE;
+	}
 
 	if (err)
 		return (errno == EBADMSG) ? CONTINUE : PAM_SYSTEM_ERR;
@@ -511,7 +520,7 @@ static int handle_event(struct poll_table *pt, unsigned *quorum, int sfd)
 		if (pt->fds[i].revents && !i)
 			ret = new_connection(sfd, pt);
 		else if ((pt->fds[i].revents & POLLIN) && i)
-			ret = new_request(pt, i, quorum);
+			ret = new_request(pt, &i, quorum);
 		else /* i && POLLHUP | POLLRDHUP */
 			close_connection(pt, &i);
 	}

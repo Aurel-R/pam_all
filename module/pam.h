@@ -56,16 +56,17 @@ struct control {
 /* XXX: replace by enum */
 /* Errors begin at 32 (_PAM_RETURNED_VALUES in PAM-1.1.8)
  * so as not interfere with the default values */
-#define USR_NOT_INGRP	32 
-#define GROUP_BAD_CONF	33
-#define QUORUM_BAD_CONF	34
+#define USR_NOT_INGRP		32 
+#define GROUP_BAD_CONF		33
+#define QUORUM_BAD_CONF		34
 #define BAD_CONF GROUP_BAD_CONF | QUORUM_BAD_CONF /* 35 */
-#define TIMEOUT		36
-#define CANCELED	37
-#define ABORTED		38
-#define REFUSED		39
-#define CONTINUE	40
-#define VALIDATE	41
+#define TIMEOUT			36
+#define CANCELED		37
+#define ABORTED			38
+#define REFUSED			39
+#define CONTINUE		40
+#define CONNECTION_CLOSED	42
+#define VALIDATE		41
 
 struct sudo_cmd {
 	int argc;
