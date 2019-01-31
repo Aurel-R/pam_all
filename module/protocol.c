@@ -78,7 +78,7 @@ static struct request fill_request(struct pam_user *usr,
 	memmove(req.pwd, usr->cwd, MIN(n1, n2));
 	req.start = time(NULL);
 	req.end   = time(NULL) + timeout; 
-	memmove(req.saddr, addr, UNIX_PATH_MAX);
+	memmove(req.saddr, addr, UNIX_PATH_LEN);
 	return req;
 }
 
@@ -228,7 +228,6 @@ static int configure_signals(int timeout)
 	}
 	if (timeout > 0) {
 		ret = alarm((unsigned)timeout);
-		D(("sudo alarm = %u", ret)); /* I hope 0 */
 		signal(SIGALRM, signal_handler);
 	}
 	unset = 1;
@@ -266,6 +265,7 @@ static struct poll_table *poll_init(struct pam_user *usr, int fd)
 		_pam_syslog(_pamh, LOG_CRIT, "calloc() failure");
 		return NULL;
 	}
+	
 
 	if (!(pt->fds = calloc(n, sizeof(struct pollfd)))    ||
 	    !(pt->login_time = calloc(n, sizeof(time_t)))    ||
@@ -400,7 +400,7 @@ static int recv_packet(int fd, struct msg_packet *msg)
 	struct msg_packet _msg;
 	
 	memset(&_msg, 0, sizeof(_msg));
-	n = read(fd, &_msg, sizeof(_msg));
+	n = read(fd, &_msg, sizeof(_msg)); // sometime 0
 	if (n != sizeof(_msg)) {
 		errno = (n < 0) ? errno : EBADMSG;
 		_pam_syslog(_pamh, LOG_ERR, "recv packet error: %m");
@@ -437,8 +437,10 @@ static int send_info_packet(int fd, const char *info)
 
 static int cancel_command(int fd, struct pam_user *usr, struct pam_user *cusr)
 {
-	if (usr->pwd->pw_uid == cusr->pwd->pw_uid)
+	if (usr->pwd->pw_uid == cusr->pwd->pw_uid) {
+		send_info_packet(fd, "command canceled");
 		return CANCELED;
+	}
 
 	send_info_packet(fd, "you cannot cancel this command");
 	return CONTINUE;	
