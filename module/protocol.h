@@ -21,12 +21,10 @@
 #ifndef H_PROT_H
 #define H_PROT_H
 
-#define PROT_ERR	-1
-
 #ifndef PATH_MAX
 #define PATH_MAX	4096
 #endif
-#define UNIX_PATH_MAX	108
+#define UNIX_PATH_LEN	108
 #define USER_NAME_LEN	64
 #define DATA_BUFF_LEN	128
 
@@ -59,7 +57,7 @@ struct request {
 	char pwd[PATH_MAX];
 	time_t start;
 	time_t end;
-	char saddr[UNIX_PATH_MAX];
+	char saddr[UNIX_PATH_LEN];
 	char *command;
 };
 
