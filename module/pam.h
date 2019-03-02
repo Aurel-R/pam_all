@@ -29,7 +29,6 @@
 #define PAM_DEBUG_ARG		0x01 
 #define PAM_ECHO		0x02
 #define DEFAULT_TIMEOUT		3200 
-#define MIN_MS_TIMEOUT		60000 
 struct control {
 	int opt;
 	unsigned quorum;
@@ -65,8 +64,8 @@ struct control {
 #define ABORTED			38
 #define REFUSED			39
 #define CONTINUE		40
-#define CONNECTION_CLOSED	42
-#define VALIDATE		41
+#define CONNECTION_CLOSED	41
+#define VALIDATE		42
 
 struct sudo_cmd {
 	int argc;
@@ -97,7 +96,7 @@ int get_pam_user(pam_handle_t *pamh, struct control ctrl, struct pam_user **user
 int group_authenticate(pam_handle_t *pamh, struct control ctrl, struct pam_user *user);
 int group_quorum(pam_handle_t *pamh, struct control ctrl, struct pam_user *user);
 int check_dir_access(pam_handle_t *pamh, struct control ctrl);
-int preauth_error(struct pam_user *user, int err);
+int preauth_error(int err);
 struct sudo_cmd *get_command(pam_handle_t *pamh);
 void clean_command(struct sudo_cmd *cmd);
 int checklink(pam_handle_t *pamh, struct sudo_cmd *cmd, struct sudo_cmd **cmd_copy);

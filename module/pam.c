@@ -266,11 +266,8 @@ int check_dir_access(pam_handle_t *pamh, struct control ctrl)
 	return PAM_SUCCESS;
 }
 
-int preauth_error(struct pam_user *user, int err)
+int preauth_error(int err)
 {
-	if (user)
-		clean_pam_user(user);
-
 	switch (err) {
 	case GROUP_BAD_CONF:
 	case QUORUM_BAD_CONF:
@@ -356,7 +353,8 @@ struct sudo_cmd *get_command(pam_handle_t *pamh)
 		return NULL;
 
 	}	
-	// XXX: to much higer i think. use a tmp buffer and free it
+	/* XXX: too much higher. Free it after read and alloc a new buffer of 
+	 *	size n (return of read) */
 	cmd->cmdline = calloc(arg_max, sizeof(*cmd->cmdline));
 	if (!cmd->cmdline) {
 		D(("memory allocation error: %m"));
@@ -365,7 +363,8 @@ struct sudo_cmd *get_command(pam_handle_t *pamh)
 		close(fd);
 		return NULL;
 	}
-	
+	/* XXX: it is considered that the content of the file cannot exceed 
+	 *	arg_max and that read() reads the entire file at once */
 	n = read(fd, cmd->cmdline, arg_max);
 	close(fd);
 	if (n < 0) {
@@ -412,7 +411,7 @@ int checklink(pam_handle_t *pamh, struct sudo_cmd *cmd, struct sudo_cmd **cmd_co
 {
 	size_t i;
 	struct sudo_cmd *cmdcp;
-	static int do_check = 0;
+	static int do_check = 0; /* XXX: replace by arg */
 
 	if (do_check) 
 		return do_checklink(cmd, *cmd_copy);
@@ -421,6 +420,7 @@ int checklink(pam_handle_t *pamh, struct sudo_cmd *cmd, struct sudo_cmd **cmd_co
 	if (!cmdcp) {
 		D(("memory allocation error: %m"));
 		_pam_syslog(pamh, LOG_CRIT, "calloc() failure");
+		*cmd_copy = NULL;
 		return PAM_SYSTEM_ERR;
 	}
 
@@ -430,6 +430,7 @@ int checklink(pam_handle_t *pamh, struct sudo_cmd *cmd, struct sudo_cmd **cmd_co
 		D(("memory allocation error: %m"));
 		_pam_syslog(pamh, LOG_CRIT, "malloc() failure");
 		free(cmdcp);
+		*cmd_copy = NULL;
 		return PAM_SYSTEM_ERR;
 	} 
 
