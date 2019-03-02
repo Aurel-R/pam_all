@@ -1,5 +1,5 @@
 CMD_LOG
-TODO
+.TODO
 app/all-validate
 *.so
 *.o
