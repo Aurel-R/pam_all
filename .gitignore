@@ -1,6 +1,6 @@
 CMD_LOG
 .TODO
-app/all-validate
+all-validate/all-validate
 *.so
 *.o
 *~
