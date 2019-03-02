@@ -258,7 +258,7 @@ static void poll_clean(struct poll_table *pt)
 static struct poll_table *poll_init(struct pam_user *usr, int fd)
 {
 	size_t i;
-	size_t n = usr->grp.nb_users + 2;
+	size_t n = usr->grp.nb_users + 1; 
 	struct poll_table *pt = calloc(1, sizeof(*pt));
 
 	if (!pt) {
@@ -363,7 +363,9 @@ static int new_connection(int sfd, struct poll_table *pt)
 		err = CONTINUE;
 		goto end;
 	}
-	
+
+	/* it can technically never happen, unless perhaps users are added 
+	 * to the group during the execution */	
 	if (pt->ncon == pt->nmemb) 
 		kick_older(pt);
 	
@@ -404,8 +406,9 @@ static int recv_packet(int fd, struct msg_packet *msg)
 	
 	if (!n)
 		return CONNECTION_CLOSED;
-
-	if (n != sizeof(_msg)) {
+	
+	/* XXX: consider returning CONNECTION_CLOSED to avoid DOS */
+	if (n != sizeof(_msg)) { 
 		errno = (n < 0) ? errno : EBADMSG;
 		_pam_syslog(_pamh, LOG_ERR, "recv packet error: %m");
 		return PAM_SYSTEM_ERR;
