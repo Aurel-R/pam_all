@@ -34,17 +34,7 @@ enum msg_code {
 	REFUSE_COMMAND,
 	VALIDATE_COMMAND
 };
-/*
-struct msg_data {
-	enum msg_code code;
-	uint8_t data[DATA_BUFF_LEN];
-};
 
-union msg_packet {
-	struct msg_data data;
-	uint8_t buffer[sizeof(struct msg_data)];
-};
-*/
 struct msg_packet {
 	enum msg_code code;
 	uint8_t data[DATA_BUFF_LEN];
