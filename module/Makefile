@@ -8,7 +8,7 @@ all : $(MODULE)
 
 
 pam_all.so : pam_all.o pam.o protocol.o utils.o
-	$(CC) $(CFLAGS) -g -shared -o $@ $^ $(MODULE_LIBS)
+	$(CC) $(CFLAGS) -shared -o $@ $^ $(MODULE_LIBS)
 
 pam_all.o : pam_all.c  
 	$(CC) -fPIC $(CFLAGS) -c $<
