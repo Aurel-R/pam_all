@@ -91,8 +91,10 @@ int pam_sm_authenticate(pam_handle_t *pamh, int flags, int argc, const char **ar
 	if ((retval = get_pam_user(pamh, ctrl, &user))      != PAM_SUCCESS ||
 	    (retval = group_authenticate(pamh, ctrl, user)) != PAM_SUCCESS ||
 	    (retval = group_quorum(pamh, ctrl, user))	    != PAM_SUCCESS ||
-	    (retval = check_dir_access(pamh, ctrl))	    != PAM_SUCCESS)
-		return preauth_error(user, retval);
+	    (retval = check_dir_access(pamh, ctrl))	    != PAM_SUCCESS) {
+		clean(pamh, user, retval);
+		return preauth_error(retval);
+	}
 
 	if (_IS_SET(ctrl.opt, PAM_DEBUG_ARG)) {
 		_pam_syslog(pamh, LOG_INFO, "user %s is set in %s group (quorum=%u)",
