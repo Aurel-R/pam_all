@@ -29,7 +29,7 @@ char *is_a_symlink(const char *argv, int link_level)
 	n = readlink(argv, link, PATH_MAX);
 	if (n < 0)
 		return NULL;
-
+	
 	link[n] = '\0';
 
 	tmp_link = is_a_symlink(link, link_level + 1);
@@ -54,5 +54,5 @@ unsigned strtou(const char *s, int *err_or_overflow)
 	}
 
 	*err_or_overflow = 0;
-	return (unsigned)sl;		
+	return sl;		
 }

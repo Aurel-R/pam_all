@@ -21,7 +21,7 @@ int strtosint(const char *s, int *err_or_overflow)
 	}
 
 	*err_or_overflow = 0;
-	return (int)sl;		
+	return sl;		
 }
 
 int strtime(time_t t, char *buff, size_t len)
