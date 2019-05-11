@@ -79,9 +79,6 @@ really comes from one of them and is done under good conditions.
 TIPS
 ====
 
-* This module was initially developed for 'sudo' but can be used by different
-  suid root services like 'su' for example.
-
 * Use a terminal multiplexer (like GNU Screen) when you execute the sudo 
   command. This will allow you to continue working or disconnect from the 
   server until the command is validated. 
