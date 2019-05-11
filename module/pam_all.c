@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2015 Aurélien Rausch <aurel@aurel-r.fr>
+ * Copyright (C) 2015, 2019 Aurélien Rausch <aurel@aurel-r.fr>
  * 
  * This file is part of pam_all.
  *
@@ -16,6 +16,7 @@
  * You should have received a copy of the GNU General Public License
  * along with pam_all.  If not, see <http://www.gnu.org/licenses/>.
  */
+
 #define PAM_SM_AUTH
 #define PAM_SM_ACCOUNT
 #define PAM_SM_PASSWORD
@@ -25,6 +26,7 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include <stdint.h>
+#include <unistd.h>
 #include <string.h>
 #include <syslog.h>
 #include <errno.h>
@@ -91,7 +93,7 @@ int pam_sm_authenticate(pam_handle_t *pamh, int flags, int argc, const char **ar
 	if ((retval = get_pam_user(pamh, ctrl, &user))      != PAM_SUCCESS ||
 	    (retval = group_authenticate(pamh, ctrl, user)) != PAM_SUCCESS ||
 	    (retval = group_quorum(pamh, ctrl, user))	    != PAM_SUCCESS ||
-	    (retval = check_dir_access(pamh, ctrl))	    != PAM_SUCCESS) {
+	    (retval = check_dir_access(pamh, ctrl, user))   != PAM_SUCCESS) {
 		clean(pamh, user, retval);
 		return preauth_error(retval);
 	}
@@ -107,7 +109,7 @@ int pam_sm_authenticate(pam_handle_t *pamh, int flags, int argc, const char **ar
 		return PAM_SYSTEM_ERR;
 	}
 
-	retval = checklink(pamh, cmd, &cmd_copy);
+	retval = checklink(pamh, cmd, &cmd_copy, 0);
 	if (retval != PAM_SUCCESS)
 		goto end;
 
@@ -126,7 +128,7 @@ int pam_sm_authenticate(pam_handle_t *pamh, int flags, int argc, const char **ar
 
 	retval = wait_for_validation(pamh, user, ctrl, srv_fd);
 	if (retval == PAM_SUCCESS)
-		retval = checklink(pamh, cmd, &cmd_copy);
+		retval = checklink(pamh, cmd, &cmd_copy, DO_CHECK);
 	
 	switch (retval) {
 	case PAM_SUCCESS:
@@ -168,30 +170,35 @@ end:
 PAM_EXTERN
 int pam_sm_chauthtok(pam_handle_t *pamh, int flags, int argc, const char **argv)
 {
+	(void)pamh; (void)flags; (void)argc; (void)argv;
 	return PAM_IGNORE;
 }
 
 PAM_EXTERN
 int pam_sm_acct_mgmt(pam_handle_t *pamh, int flags, int argc, const char **argv) 
 {
+	(void)pamh; (void)flags; (void)argc; (void)argv;
 	return PAM_IGNORE;
 }
 
 PAM_EXTERN
 int pam_sm_setcred(pam_handle_t *pamh, int flags, int argc, const char **argv) 
 {
+	(void)pamh; (void)flags; (void)argc; (void)argv;
 	return PAM_IGNORE;
 }
 
 PAM_EXTERN
 int pam_sm_open_session(pam_handle_t *pamh, int flags, int argc, const char **argv)
 {
+	(void)pamh; (void)flags; (void)argc; (void)argv;
 	return PAM_IGNORE;
 }
 
 PAM_EXTERN
 int pam_sm_close_session(pam_handle_t *pamh, int flags, int argc, const char **argv)
 {
+	(void)pamh; (void)flags; (void)argc; (void)argv;
 	return PAM_IGNORE;
 }
 

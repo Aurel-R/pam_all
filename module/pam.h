@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2015 Aurélien Rausch <aurel@aurel-r.fr>
+ * Copyright (C) 2015, 2019 Aurélien Rausch <aurel@aurel-r.fr>
  * 
  * This file is part of pam_all.
  *
@@ -28,7 +28,7 @@
 
 #define PAM_DEBUG_ARG		0x01 
 #define PAM_ECHO		0x02
-#define DEFAULT_TIMEOUT		3200 
+#define DEFAULT_TIMEOUT		3600 
 struct control {
 	int opt;
 	unsigned quorum;
@@ -40,7 +40,7 @@ struct control {
 #define PATH_MAX	4096
 #endif
 
-#define D_ERR(TYPE)	(pam_strerror(0,TYPE))
+#define D_ERR(TYPE)	(pam_strerror(0, TYPE))
 
 #define in_group_nam(uname, gname) \
 	(pam_modutil_user_in_group_nam_nam(pamh, uname, gname))
@@ -51,6 +51,7 @@ struct control {
 #define CMDLINE		"/proc/self/cmdline"
 #define USER_TTY	"/dev/tty"
 #define CMD_DIR 	"/var/lib/pam_all"
+#define DO_CHECK	1
 
 /* XXX: replace by enum */
 /* Errors begin at 32 (_PAM_RETURNED_VALUES in PAM-1.1.8)
@@ -95,11 +96,12 @@ void clean(pam_handle_t *pamh UNUSED, void *data, int err UNUSED);
 int get_pam_user(pam_handle_t *pamh, struct control ctrl, struct pam_user **user);
 int group_authenticate(pam_handle_t *pamh, struct control ctrl, struct pam_user *user);
 int group_quorum(pam_handle_t *pamh, struct control ctrl, struct pam_user *user);
-int check_dir_access(pam_handle_t *pamh, struct control ctrl);
+int check_dir_access(pam_handle_t *pamh, struct control ctrl, struct pam_user *user);
 int preauth_error(int err);
 struct sudo_cmd *get_command(pam_handle_t *pamh);
 void clean_command(struct sudo_cmd *cmd);
-int checklink(pam_handle_t *pamh, struct sudo_cmd *cmd, struct sudo_cmd **cmd_copy);
+int checklink(pam_handle_t *pamh, struct sudo_cmd *cmd, 
+			struct sudo_cmd **cmd_copy, int do_check);
 
 #endif
 

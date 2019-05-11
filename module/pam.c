@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2015 Aurélien Rausch <aurel@aurel-r.fr>
+ * Copyright (C) 2015, 2019 Aurélien Rausch <aurel@aurel-r.fr>
  * 
  * This file is part of pam_all.
  *
@@ -16,6 +16,7 @@
  * You should have received a copy of the GNU General Public License
  * along with pam_all.  If not, see <http://www.gnu.org/licenses/>.
  */
+
 #define _GNU_SOURCE
 #include <security/pam_modules.h>
 #include <stdlib.h>
@@ -202,9 +203,9 @@ int group_authenticate(pam_handle_t *pamh, struct control ctrl, struct pam_user 
 	case GROUP_BAD_CONF:
 		_pam_syslog(pamh, LOG_ALERT, "ALERT: bad value for group option");
 		_pam_info(pamh, ctrl.opt, "ALERT: bad value for group option");
-		return GROUP_BAD_CONF;
+		/* fall through */
 	case PAM_SYSTEM_ERR:
-		return PAM_SYSTEM_ERR;
+		return retval;
 	}
 
 	if (!in_group_nam(user->name, grp.ux_grp->gr_name)) {
@@ -231,33 +232,39 @@ int group_quorum(pam_handle_t *pamh, struct control ctrl, struct pam_user *user)
 	return PAM_SUCCESS;
 }
 
-static int make_command_dir(pam_handle_t *pamh)
+static int make_command_dir(pam_handle_t *pamh, struct pam_user *user)
 {
-	if (mkdir(CMD_DIR, 0755)) {
+	if (mkdir(CMD_DIR, 0750)) {
 		_pam_syslog(pamh, LOG_ERR, "mkdir() error: %m");
 		return PAM_SYSTEM_ERR;
 	}
 
+	if (chown(CMD_DIR, 0, user->grp.ux_grp->gr_gid)) {
+		_pam_syslog(pamh, LOG_ERR, "chown() error: %m");
+		return PAM_SYSTEM_ERR;	
+	}	
+
 	return PAM_SUCCESS;
 }
 
-int check_dir_access(pam_handle_t *pamh, struct control ctrl)
+int check_dir_access(pam_handle_t *pamh, struct control ctrl, struct pam_user *user)
 {
 	struct stat st;
 
 	if (lstat(CMD_DIR, &st) < 0) {
 		if (errno == ENOENT || errno == ENOTDIR)
-			return make_command_dir(pamh);
+			return make_command_dir(pamh, user);
 		_pam_syslog(pamh, LOG_ERR, "lstat() error: %m");
 		return PAM_SYSTEM_ERR;
 	}
 
-	if (st.st_uid != 0 || st.st_gid != 0 || !(S_ISDIR(st.st_mode)) || 
+	if (st.st_uid != 0 || st.st_gid != user->grp.ux_grp->gr_gid || 
+			!(S_ISDIR(st.st_mode)) || 
 			!((S_IRUSR & st.st_mode) &&  (S_IWUSR & st.st_mode) && 
 	  		  (S_IXUSR & st.st_mode) &&  (S_IRGRP & st.st_mode) &&
 			 !(S_IWGRP & st.st_mode) &&  (S_IXGRP & st.st_mode) &&
-			  (S_IROTH & st.st_mode) && !(S_IWOTH & st.st_mode) &&
-			  (S_IXOTH & st.st_mode))) {
+			 !(S_IROTH & st.st_mode) && !(S_IWOTH & st.st_mode) &&
+			 !(S_IXOTH & st.st_mode))) {
 		_pam_syslog(pamh, LOG_ALERT, "ALERT: bad mode for %s", CMD_DIR);
 		_pam_info(pamh, ctrl.opt, "ALERT: bad mode for %s", CMD_DIR);
 		return BAD_CONF;
@@ -334,12 +341,16 @@ struct sudo_cmd *get_command(pam_handle_t *pamh)
 {
 	int fd;
 	ssize_t n;
-	size_t arg_max = (size_t)sysconf(_SC_ARG_MAX);
-	struct sudo_cmd *cmd = malloc(sizeof(*cmd));
+	struct sudo_cmd *cmd;
+	ssize_t arg_max = (ssize_t)sysconf(_SC_ARG_MAX);
 	
-	D(("ARG_MAX = %zd", arg_max));
-	
-	if (!cmd) {
+	if (arg_max < 0) {
+		D(("sysconf error: %m"));
+		_pam_syslog(pamh, LOG_CRIT, "sysconf() failure");
+		return NULL;
+	}
+
+	if (!(cmd = malloc(sizeof(*cmd)))) {
 		D(("memory allocation error: %m"));
 		_pam_syslog(pamh, LOG_CRIT, "malloc() failure");
 		return NULL;
@@ -374,8 +385,9 @@ struct sudo_cmd *get_command(pam_handle_t *pamh)
 		free(cmd);
 		return NULL;
 	}	
-
 	cmd->len = (size_t)n;
+	cmd->cmdline[cmd->len - 1] = '\0';
+	
 	if (get_cmdline_argv(pamh, cmd) == PAM_SYSTEM_ERR) {
 		free(cmd->cmdline);
 		free(cmd);
@@ -407,11 +419,11 @@ static int do_checklink(struct sudo_cmd *cmd, struct sudo_cmd *cmd_copy)
 	return PAM_SUCCESS;
 }
 
-int checklink(pam_handle_t *pamh, struct sudo_cmd *cmd, struct sudo_cmd **cmd_copy)
+int checklink(pam_handle_t *pamh, struct sudo_cmd *cmd, 
+				struct sudo_cmd **cmd_copy, int do_check)
 {
 	size_t i;
 	struct sudo_cmd *cmdcp;
-	static int do_check = 0; /* XXX: replace by arg */
 
 	if (do_check) 
 		return do_checklink(cmd, *cmd_copy);
@@ -445,7 +457,6 @@ int checklink(pam_handle_t *pamh, struct sudo_cmd *cmd, struct sudo_cmd **cmd_co
 			goto strdup_error;
 	}
 
-	do_check = 1;
 	*cmd_copy = cmdcp;
 	return PAM_SUCCESS;
 strdup_error:
