@@ -1,3 +1,22 @@
+/*
+ * Copyright (C) 2015, 2019 Aurélien Rausch <aurel@aurel-r.fr>
+ *  
+ * This file is part of pam_all.
+ * 
+ * pam_all is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 2 of the License, or
+ * (at your option) any later version.
+ * 
+ * pam_all is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ * 
+ * You should have received a copy of the GNU General Public License
+ * along with pam_all.  If not, see <http://www.gnu.org/licenses/>.
+ */
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <stdint.h>
@@ -65,9 +84,9 @@ static void usage(const char *service_name)
 	printf("usage:\n");
 	printf("lists pending commands:\n");
 	printf("\t%s [-l | --list]\n", service_name);
-	printf("validate commands:\n");
+	printf("validate command:\n");
 	printf("\t%s [-y | --yes] pid_1 [pid_2 pid_3 ...]\n", service_name);
-	printf("cancel command:\n");
+	printf("cancel command:\n"); 
 	printf("\t%s {-c | --cancel} pid_1 [pid_2 pid_3 ...]\n", service_name);
 }
 
@@ -110,10 +129,7 @@ static int filter(const struct dirent *entry)
 	return !strncmp(entry->d_name, "req-", 4);	
 }
 
-/* 
- * XXX: undefined behaviour if the file data does not 
- *	match 'struct request' type 
- */
+/* TODO: add + check header */
 static int extract_request(struct request_list **reql, struct dirent *entry)
 {
 	int fd;
@@ -140,6 +156,9 @@ static int extract_request(struct request_list **reql, struct dirent *entry)
 		goto err;
 	}
 
+	if ((size_t)st.st_size < sizeof(struct request))
+		goto wrong_file_format;
+
 	curr->iov.iov_base = mmap(NULL, st.st_size, PROT_READ | PROT_WRITE, 
 							MAP_PRIVATE, fd, 0);
 	if (curr->iov.iov_base == MAP_FAILED) {
@@ -154,45 +173,48 @@ static int extract_request(struct request_list **reql, struct dirent *entry)
 	*reql = curr;
 	close(fd);
 	return 0;
+wrong_file_format:
+	fprintf(stderr, "%s: wrong file format\n", path);
 err:
 	close(fd);
 	free(curr);
 	return -1;
 }
 
-static void free_request_list(struct request_list **reql)
+static void free_request_list(struct request_list *reql)
 {
 	struct request_list *tmp;
-	while (*reql) {
-		tmp = (*reql)->next;
-		munmap((*reql)->iov.iov_base, (*reql)->iov.iov_len);
-		free(*reql);
-		*reql = tmp;
+	while (reql) {
+		tmp = reql->next;
+		munmap(reql->iov.iov_base, reql->iov.iov_len);
+		free(reql);
+		reql = tmp;
 	}
 }
 
-static struct request_list *get_request_list(void)
+static int get_request_list(struct request_list **reql)
 {
 	int n, err = 0;
 	struct dirent **entry;
-	struct request_list *reql = NULL;
 
 	n = scandir(CMD_DIR, &entry, filter, alphasort);	
 	if (n < 0) {
 		perror("scandir");
-		return NULL;
+		return -1;
 	}
-
+	
+	if (!n) {
+		printf("no pending requests\n");
+		return 0;
+	}
+	
 	while (n--) {
-		if (!err)	
-			err = extract_request(&reql, entry[n]);	
+		err |= extract_request(reql, entry[n]);	
 		free(entry[n]);
 	}
 
-	if (err)
-		free_request_list(&reql);
 	free(entry);
-	return reql;
+	return err;
 }
 
 static void print_request(struct request *req)
@@ -365,7 +387,7 @@ int main(int argc, char **argv)
 	int retval, pam_err;
 	pam_handle_t *pamh;
 	int c, i, ctrl = 0;
-	struct request_list *reql;
+	struct request_list *reql = NULL;
 	struct option opt[] = {
 		{"list"  , no_argument, NULL, 'l'},
 		{"yes"   , no_argument, NULL, 'y'},
@@ -397,21 +419,19 @@ int main(int argc, char **argv)
 	if (pam_err)
 		return 1;
 
-	reql = get_request_list();
-	if (!reql) {
-		retval = -1;
+	retval = get_request_list(&reql);
+	if (!reql)
 		goto end;
-	}
 
 	if (optind == argc || _IS_SET(ctrl, LONG_LIST)) {
 		print_request_list(reql, ctrl);
 		goto end;
 	}
 
-	for (i = optind; i < argc && !retval; i++) 
-		retval = process_request(argv[i], reql, ctrl);
+	for (i = optind; i < argc; i++) 
+		retval |= process_request(argv[i], reql, ctrl);
 end:
-	free_request_list(&reql);
+	free_request_list(reql);
 	pam_end(pamh, pam_err);
 	return (retval != 0);
 }
