@@ -1,0 +1,97 @@
+.\" Copyright (c) 2015, 2019 Rausch Aurélien
+.\"
+.\" %%%LICENSE_START(GPLv2+_DOC_FULL)
+.\" This is free documentation; you can redistribute it and/or
+.\" modify it under the terms of the GNU General Public License as
+.\" published by the Free Software Foundation; either version 2 of
+.\" the License, or (at your option) any later version.
+.\"
+.\" The GNU General Public License's references to "object code"
+.\" and "executables" are to be interpreted as the output of any
+.\" document formatting or typesetting system, including
+.\" intermediate and printed output.
+.\"
+.\" This manual is distributed in the hope that it will be useful,
+.\" but WITHOUT ANY WARRANTY; without even the implied warranty of
+.\" MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+.\" GNU General Public License for more details.
+.\"
+.\" You should have received a copy of the GNU General Public
+.\" License along with this manual; if not, see
+.\" <http://www.gnu.org/licenses/>.
+.\" %%%LICENSE_END
+.TH "PAM_ALL" "8" "05/05/2019" "Linux-PAM Manual" "Linux\-PAM Manual"
+.SH NAME
+pam_all \- Put a suid root command on hold until it is validated by a quorum of
+administrators 
+.SH SYNOPSIS
+.B \fBpam_all\&.so\fR 
+[debug] [silent]
+group=\fIGROUP\fR
+quorum=\fIN\fR
+[timeout=\fIN\fR]
+.SH DESCRIPTION
+.PP
+This module provides an authentication system in an administrator group when 
+executing a command requiring root privileges. The command is  
+temporarily put on hold until it is validated by a quorum of administrators. 
+This module addresses various issues such as the intrusion of a malicious user 
+into the system, threats against one of the administrators, or simply 
+administration or configuration errors.
+.SH OPTIONS
+.PP
+\fBdebug\fR
+.RS 4
+Activates debugging messages sent to \fBsyslog\fR(3)\&.
+.RE
+.PP
+\fBsilent\fR
+.RS 4
+Disables the sending of text messages for the application\&.
+.RE
+.PP
+\fBgroup=\fR\fIGROUP\fR
+.RS 4
+The unix group of administrators\&.
+.RE
+.PP
+\fBquorum=\fR\fIN\fR
+.RS 4
+The group quorum with 2 <= \fIN\fR <= number of users in the group\&.
+.RE
+.PP
+\fBtimeout=\fR\fIN\fR
+.RS 4
+Waiting period (in seconds) after which the request is aborted. The default
+value is \fI3600\fR and a value of \fI0\fR means that there is no timeout\&.
+.RE
+
+.SH "MODULE TYPES PROVIDED"
+.PP
+Only the \fBauth\fR module type is provided\&.
+.SH "RETURN VALUES"
+.PP
+PAM_AUTH_ERR
+.RS 4
+The conditions necessary for the validation of the command are not sufficient\&. 
+.RE
+.PP
+PAM_IGNORE
+.RS 4
+A configuration error has been detected, the module cannot run correctly\&. 
+.RE
+.PP
+PAM_SUCCESS
+.RS 4
+Everything was successful\&.
+.RE
+.SH "SEE ALSO"
+.PP
+\fBall-validate\fR(8),
+\fBpam.d\fR(5),
+\fBpam\fR(8),
+\fBsudo\fR(8),
+\fBsudoers\fR(5),
+.SH "AUTHOR"
+.PP
+pam_all was written by Aurelien Rausch <aurel@aurel-r.fr>

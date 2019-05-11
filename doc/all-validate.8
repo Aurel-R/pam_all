@@ -1,0 +1,75 @@
+.\" Copyright (c) 2015, 2019 Rausch Aurélien
+.\"
+.\" %%%LICENSE_START(GPLv2+_DOC_FULL)
+.\" This is free documentation; you can redistribute it and/or
+.\" modify it under the terms of the GNU General Public License as
+.\" published by the Free Software Foundation; either version 2 of
+.\" the License, or (at your option) any later version.
+.\"
+.\" The GNU General Public License's references to "object code"
+.\" and "executables" are to be interpreted as the output of any
+.\" document formatting or typesetting system, including
+.\" intermediate and printed output.
+.\"
+.\" This manual is distributed in the hope that it will be useful,
+.\" but WITHOUT ANY WARRANTY; without even the implied warranty of
+.\" MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+.\" GNU General Public License for more details.
+.\"
+.\" You should have received a copy of the GNU General Public
+.\" License along with this manual; if not, see
+.\" <http://www.gnu.org/licenses/>.
+.\" %%%LICENSE_END
+.TH "ALL-VALIDATE" "8" "05/05/2019" "Linux-PAM Manual" "Linux\-PAM Manual"
+.SH NAME
+all-validate \- Validate a pending command from \fBpam_all\fR(8) module 
+.SH SYNOPSIS
+.B \fBall-validate\fR [\fB-l\fR]
+
+.B \fBall-validate\fR 
+[\fB-y\fR | \fB-c\fR] \fIPID\fR [\fIPID_1 PID_2 PID_3\fR \&.\&.\&.] 
+.SH DESCRIPTION
+.PP
+all-validate allows you to list, validate or cancel pending commands 
+identified by their \fIPID\fR.
+.SH OPTIONS
+.PP
+\fB-h\fR, \fB-\-help\fR
+.RS 4
+Displays the help message.
+.RE
+.PP
+\fB-l, -\-list\fR
+.RS 4
+Displays the detailed list of pending requests.
+.RE
+.PP
+\fB-y\fR, \fB-\-yes\fR
+.RS 4
+When you validate a command, the \fB-y\fR option will not ask you for 
+confirmation. 
+.RE
+.PP
+\fB-c\fR, \fB-\-cancel\fR 
+.RS 4
+Cancel one or more commands. You can only cancel your own commands.  
+.RE
+.SH "RETURN VALUES"
+.PP
+1
+.RS 4
+Applicaton returned an error\&.
+.RE
+.PP
+0
+.RS 4
+Everything was successful\&.
+.RE
+.SH "SEE ALSO"
+.PP
+\fBpam_all\fR(8),
+\fBpam.d\fR(5),
+\fBpam\fR(8),
+.SH "AUTHOR"
+.PP
+all-validate was written by Aurelien Rausch <aurel@aurel-r.fr>
