@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2015 Aurélien Rausch <aurel@aurel-r.fr>
+ * Copyright (C) 2015, 2019 Aurélien Rausch <aurel@aurel-r.fr>
  * 
  * This file is part of pam_all.
  *
@@ -34,3 +34,4 @@ int strtime(time_t t, char *buff, size_t len);
 void purge_stdin(const char *s);
 
 #endif
+
