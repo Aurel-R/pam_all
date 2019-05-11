@@ -1,1 +1,98 @@
-pam_all v0.3 soon be available.
+Copyright (C) 2015, 2019 Aurélien Rausch <aurel@aurel-r.fr>
+
+
+DESCRIPTION
+===========
+
+This module provides an authentication system in an administrator group when 
+executing a command requiring root privileges (generally via sudo). The command 
+is temporarily put on hold until it is validated by a quorum of administrators. 
+This module addresses various issues such as the intrusion of a malicious user 
+into the system, threats against one of the administrators, or simply 
+administration or configuration errors.
+
+	
+INSTALL AND CONFIGURATION
+=========================
+
+1. At the root of the directory (not in module/ or all-validate/), run:
+
+	$ make
+	# make install
+
+2. Add administrator users to the sudo unix group. You can also create a 
+   specific group that you need to add to the sudoers file. 
+
+3. Update the sudoers file with the sudoedit command to add these options:
+
+	Defaults	timestamp_timeout=0
+	Defaults	passwd_tries=1
+
+4. Create the file /etc/pam.d/all-validate with appropriate arguments. It is
+   sometimes necessary to indicate the path to certain PAM modules (there are
+   usually located in /lib/<your_architecture>/security/). You must also 
+   indicate the administrator group (sudo or another one if you use a different 
+   unix group for administrators): 
+
+	@include common-auth
+	auth    [success=1 default=ignore]	/path/to/pam_succeed_if.so user ingroup sudo
+	auth    requisite			pam_deny.so
+	auth    required			pam_permit.so
+
+5. Update (> +) the file /etc/pam/d/sudo to add pam_all module with appropriate
+   arguments (see man 8 pam_all):
+
+>	@include common-auth
+> +	auth    [success=1 ignore=1 default=ignore]     /path/to/pam_all.so group=sudo quorum=2 
+> +	auth    requisite                               pam_deny.so
+> +	auth    required                                pam_permit.so
+>	@include common-account
+>	@include common-session-noninteractive
+
+
+SECURITY CONSIDERATION
+======================
+
+This module mainly prevents the intrusion of a malicious user into the system
+or the theft/extortion of the password of one of the administrators. 
+A malicious administrator may be able to bypass the module, so make sure that 
+the administrators are trustworthy and that the execution of a sudo command 
+really comes from one of them and is done under good conditions.
+
+* Configure ssh key-based authentication for administrators. 
+
+* Refer to the sudoers manual, especially chapter "Preventing shell escapes" 
+  concerning 'noexec' and 'restrict' options.
+
+* Make sure sudoers 'secure_path' is correctly set.   
+
+* It might be a good idea to limit the number of processes that can be executed 
+  in parallel in order to avoid a DOS attack by generating several thousand 
+  requests (man 5 limits.conf). This may be a possible improvement for a future 
+  version of the module. 
+  
+* Beware of symlink attacks. The module checks that the symlinks have not been 
+  modified after the validation of the command, but it is still possible to 
+  bypass the check.
+
+
+TIPS
+====
+
+* This module was initially developed for 'sudo' but can be used by different
+  suid root services like 'su' for example.
+
+* Use a terminal multiplexer (like GNU Screen) when you execute the sudo 
+  command. This will allow you to continue working or disconnect from the 
+  server until the command is validated. 
+
+* The sudoers file allows you to specify a whitelist of commands that do not
+  require authentication (NOPASSWD). 
+
+
+HOW TO CONTRIBUTE
+=================
+
+View the TODO file and send your patches, bugs or recommendations to the email 
+address of the main maintainer (aurel@aurel-r.fr).
+
