@@ -1,0 +1,26 @@
+TODO
+====
+
+* Add a magic number in request (REQH REQuestHeader) 0x52455148 
+
+* Add a request-id in request to prevent autobind socket addr reuse
+
+* Check autobind socket security
+
+* all-validate output format
+
+* Add 'HAVE_SYMLINK' in "all-validate -l" (+request file) + new protocol code 
+  for printing them 
+
+* See also 'XXX' and 'TODO' in code
+
+* Create a mailing list
+
+* Add versioning option (-v --version in all-validate (return all-validate and 
+  pam_all version))
+
+* autotools
+
+* Test again and again to provide a stable version and build a package for GNU 
+  (or maybe add the module to the existing "PAM" package) 
+
