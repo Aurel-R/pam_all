@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2015 Aurélien Rausch <aurel@aurel-r.fr>
+ * Copyright (C) 2015, 2019 Aurélien Rausch <aurel@aurel-r.fr>
  * 
  * This file is part of pam_all.
  *
@@ -16,7 +16,6 @@
  * You should have received a copy of the GNU General Public License
  * along with pam_all.  If not, see <http://www.gnu.org/licenses/>.
  */
-
 
 #ifndef H_PROT_H
 #define H_PROT_H

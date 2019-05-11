@@ -1,9 +1,29 @@
+/*
+ * Copyright (C) 2015, 2019 Aurélien Rausch <aurel@aurel-r.fr>
+ *  
+ * This file is part of pam_all.
+ * 
+ * pam_all is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 2 of the License, or
+ * (at your option) any later version.
+ * 
+ * pam_all is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ * 
+ * You should have received a copy of the GNU General Public License
+ * along with pam_all.  If not, see <http://www.gnu.org/licenses/>.
+ */
+
 #define _GNU_SOURCE
 #define __USE_GNU
 #include <stdlib.h>
 #include <stdio.h>
 #include <stdint.h>
 #include <unistd.h>
+#include <sys/stat.h>
 #include <sys/types.h>
 #include <sys/socket.h>
 #include <sys/un.h>
@@ -20,6 +40,24 @@
 #include "pam.h"
 #include "utils.h"
 #include "protocol.h"
+
+#define SET_SIGNALS	0
+#define UNSET_SIGNALS	1
+
+static int _opt;
+static pam_handle_t *_pamh;
+static volatile sig_atomic_t got_sig = 0;
+static volatile sig_atomic_t got_sigalrm = 0;
+
+struct poll_table {
+	struct pollfd *fds;
+	time_t *login_time;
+	struct pam_user *usrs;
+	struct ucred *validators;
+	size_t nmemb;
+	size_t ncon;
+	size_t nvalidators;
+};
 
 
 int start_request_srv(pam_handle_t *pamh, const char **sock_name)
@@ -134,21 +172,6 @@ err:
 	return PAM_SYSTEM_ERR;
 }
 
-static int _opt;
-static pam_handle_t *_pamh;
-static volatile sig_atomic_t got_sig = 0;
-static volatile sig_atomic_t got_sigalrm= 0;
-
-struct poll_table {
-	struct pollfd *fds;
-	time_t *login_time;
-	struct pam_user *usrs;
-	struct ucred *validators;
-	size_t nmemb;
-	size_t ncon;
-	size_t nvalidators;
-};
-
 static void signal_handler(int signo)
 {
 	D(("signal handled: %d", signo));
@@ -173,7 +196,7 @@ static int abort_waiting(void)
 	return (retval == CONTINUE) ? 0 : retval;	
 }
 
-static int configure_signals(int timeout)
+static int configure_signals(int timeout, int unset)
 {
 	int ret;
 	struct termios term;
@@ -183,7 +206,6 @@ static int configure_signals(int timeout)
 	static struct termios oterm;
 	static sigset_t omask;
 	static struct sigaction osa;
-	static int unset = 0;
 
 	if (unset) {
 		if (sigprocmask(SIG_SETMASK, &omask, NULL) || 
@@ -230,12 +252,10 @@ static int configure_signals(int timeout)
 		ret = alarm((unsigned)timeout);
 		signal(SIGALRM, signal_handler);
 	}
-	unset = 1;
 	return PAM_SUCCESS;
 err:
 	close(tty);
-	return PAM_SYSTEM_ERR;	
-	
+	return PAM_SYSTEM_ERR;		
 }
 
 static void poll_clean(struct poll_table *pt)
@@ -266,7 +286,6 @@ static struct poll_table *poll_init(struct pam_user *usr, int fd)
 		return NULL;
 	}
 	
-
 	if (!(pt->fds = calloc(n, sizeof(struct pollfd)))    ||
 	    !(pt->login_time = calloc(n, sizeof(time_t)))    ||
 	    !(pt->usrs = calloc(n, sizeof(struct pam_user))) ||
@@ -358,14 +377,14 @@ static int new_connection(int sfd, struct poll_table *pt)
 	}
 
 	if (!in_group_id(cpwd->pw_uid, gid)) {
-		_pam_syslog(_pamh, LOG_NOTICE, "untrusted user connection "\
+		_pam_syslog(_pamh, LOG_NOTICE, "untrusted user connection "
 				"(%d:%s)", cpwd->pw_uid, cpwd->pw_name);
 		err = CONTINUE;
 		goto end;
 	}
 
-	/* it can technically never happen, unless perhaps users are added 
-	 * to the group during the execution */	
+	/* it can technically never happen, (maybe?) unless perhaps users 
+	 * are added to the group during the execution */	
 	if (pt->ncon == pt->nmemb) 
 		kick_older(pt);
 	
@@ -465,22 +484,26 @@ static int validate_command(int fd, struct poll_table *pt,
 
 	for (i = 0; i < pt->nvalidators; i++) {
 		if (cusr->cred.uid == pt->validators[i].uid) {
-			send_info_packet(fd, "you have already validate "\
+			send_info_packet(fd, "you have already validate "
 								"this command");
 			return CONTINUE;	
 		}
 	}
-
+	/* validators buffer can't overflow:
+	 *	quorum is <= grp.nb_users
+	 *	validators size is equal to grp.nb_users + 1 */	
 	pt->validators[pt->nvalidators] = cusr->cred;
-	pt->nvalidators++;
+	pt->nvalidators++; 
 	(*quorum)++;
+	_pam_syslog(_pamh, LOG_INFO, "user %s (uid:%d) has validated the "
+				"command", cusr->name, cusr->pwd->pw_uid);
 	send_info_packet(fd, "command validated");
 	_pam_info(_pamh, _opt, "user %s has validated the command", cusr->name);
 	return (*quorum >= pt->usrs[0].grp.quorum) ? VALIDATE : CONTINUE;
 	
 }
 
-static int new_request(struct poll_table *pt, size_t *pos, unsigned *quorum) 
+static int new_message(struct poll_table *pt, size_t *pos, unsigned *quorum) 
 {
 	struct msg_packet msg;
 	int fd = pt->fds[*pos].fd;
@@ -506,10 +529,10 @@ static int new_request(struct poll_table *pt, size_t *pos, unsigned *quorum)
 		return validate_command(fd, pt, usr, quorum);	
 	}
 
-	_pam_syslog(_pamh, LOG_NOTICE, "received an invalid request code "\
+	_pam_syslog(_pamh, LOG_NOTICE, "received an invalid request code "
 			"(%d) from user %s (uid=%d)", msg.code, usr->name, 
 							usr->pwd->pw_uid);
-	return send_info_packet(fd,  "invalid request code");
+	return send_info_packet(fd, "invalid request code");
 }
 
 static int handle_event(struct poll_table *pt, unsigned *quorum, int sfd)
@@ -523,7 +546,7 @@ static int handle_event(struct poll_table *pt, unsigned *quorum, int sfd)
 		if (pt->fds[i].revents && !i)
 			ret = new_connection(sfd, pt);
 		else if ((pt->fds[i].revents & POLLIN) && i)
-			ret = new_request(pt, &i, quorum);
+			ret = new_message(pt, &i, quorum);
 		else /* i && POLLHUP | POLLRDHUP */
 			close_connection(pt, &i);
 	}
@@ -543,7 +566,7 @@ int wait_for_validation(pam_handle_t *pamh, struct pam_user *usr,
 	if (!pt) 
 		return PAM_SYSTEM_ERR;
 
-	if (configure_signals(ctrl.timeout)) {
+	if (configure_signals(ctrl.timeout, SET_SIGNALS)) {
 		poll_clean(pt);
 		return PAM_SYSTEM_ERR;
 	}		
@@ -561,7 +584,7 @@ int wait_for_validation(pam_handle_t *pamh, struct pam_user *usr,
 		}
 	}
 
-	if (configure_signals(0))
+	if (configure_signals(0, UNSET_SIGNALS))
 		status = PAM_SYSTEM_ERR;
 
 	poll_clean(pt);
