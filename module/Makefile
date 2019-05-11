@@ -1,8 +1,10 @@
 MODULE=pam_all.so
 CC=gcc
 MODULE_LIBS=-lpam
-CFLAGS=-DPAM_DEBUG -Wall -Wextra
-#CFLAGS=-Wall -Wextra
+CFLAGS=-Wall -Wextra
+#CFLAGS=-DPAM_DEBUG -Wall -Wextra
+INSTALL=install
+MODULE_PATH:=`find /lib -name "pam_unix.so" -exec dirname {} \;`
 
 all : $(MODULE)
 
@@ -21,6 +23,9 @@ protocol.o : protocol.c
 
 utils.o : utils.c
 	$(CC) -fPIC $(CFLAGS) -c $<
+
+install: all
+	$(INSTALL) -v -g 0 -o 0 -m 0644 $(MODULE) $(MODULE_PATH)
 
 clean :
 	rm *.o $(MODULE) 
