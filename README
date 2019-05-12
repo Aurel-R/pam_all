@@ -5,8 +5,8 @@ DESCRIPTION
 ===========
 
 This module provides an authentication system in an administrator group when 
-executing a command requiring root privileges (generally via sudo). The command 
-is temporarily put on hold until it is validated by a quorum of administrators. 
+executing a command requiring root privileges (via sudo). The command is 
+temporarily put on hold until it is validated by a quorum of administrators. 
 This module addresses various issues such as the intrusion of a malicious user 
 into the system, threats against one of the administrators, or simply 
 administration or configuration errors.
