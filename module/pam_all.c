@@ -59,7 +59,7 @@ static struct control _pam_parse(pam_handle_t *pamh, int flags,
 				_pam_syslog(pamh, LOG_ERR, "invalid timeout value");
 				ctrl.timeout = DEFAULT_TIMEOUT;
 			}
-			D(("timeout value set (%d)", ctrl.timeout));
+			D(("timeout value set (%u)", ctrl.timeout));
 		} else if (!strncmp(*argv, "group=", 6)) {
 		       ctrl.group = *argv + 6;
 			D(("unix group value set (%s)", ctrl.group));
@@ -67,7 +67,7 @@ static struct control _pam_parse(pam_handle_t *pamh, int flags,
 			ctrl.quorum = strtou(*argv + 7, &ret);
 			if (ret) 
 				_pam_syslog(pamh, LOG_ERR, "invalid quorum value");
-			D(("quorum value set (%d)", ctrl.quorum));		
+			D(("quorum value set (%u)", ctrl.quorum));		
 		} else {
 			_pam_syslog(pamh, LOG_ERR, "unknow option: %s", *argv);
 		}
