@@ -39,7 +39,7 @@ INSTALL AND CONFIGURATION
 	auth    requisite			pam_deny.so
 	auth    required			pam_permit.so
 
-5. Update (> +) the file /etc/pam/d/sudo to add pam_all module with appropriate
+5. Update (> +) the file /etc/pam.d/sudo to add pam_all module with appropriate
    arguments (see man 8 pam_all):
 
 >	@include common-auth
